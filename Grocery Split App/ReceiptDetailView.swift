@@ -534,7 +534,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Receipt.self, Item.self, Roommate.self, configurations: config)
+    let container = try! ModelContainer(for: Receipt.self, Item.self, Roommate.self, SplitPreference.self, configurations: config)
     
     // Create sample data
     let alice = Roommate(name: "Alice", colorTag: "blue")

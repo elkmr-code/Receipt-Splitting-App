@@ -355,5 +355,5 @@ struct DemoModeView: View {
 
 #Preview {
     ReceiptListView()
-        .modelContainer(for: [Receipt.self, Item.self, Roommate.self])
+        .modelContainer(for: [Receipt.self, Item.self, Roommate.self, SplitPreference.self])
 }
