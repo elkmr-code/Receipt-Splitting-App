@@ -68,6 +68,10 @@ class SplittingService: ObservableObject {
     ) -> [Item] {
         var items: [Item] = []
         let totalWeight = roommates.reduce(0) { $0 + $1.weight }
+        guard totalWeight > 0 else {
+            // Fallback to round robin if weights are invalid
+            return splitRoundRobin(parsedItems, among: roommates, modelContext: modelContext)
+        }
         
         // Create weighted selection pool
         var weightedRoommates: [Roommate] = []
@@ -190,7 +194,7 @@ class SplittingService: ObservableObject {
             }
         }
         
-        let averageTotal = totals.values.reduce(0, +) / Double(roommates.count)
+        let averageTotal = roommates.isEmpty ? 0.0 : totals.values.reduce(0, +) / Double(roommates.count)
         
         // Find items that can be reassigned to balance totals
         var sortedItems = items.sorted { $0.totalPrice > $1.totalPrice }

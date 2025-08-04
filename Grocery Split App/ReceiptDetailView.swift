@@ -117,7 +117,7 @@ struct ReceiptDetailView: View {
                 .fontWeight(.semibold)
             
             let balances = receipt.calculateBalances()
-            let avgAmount = receipt.calculatedTotal / Double(balances.count)
+            let avgAmount = balances.isEmpty ? 0.0 : receipt.calculatedTotal / Double(balances.count)
             
             VStack(spacing: 12) {
                 ForEach(receipt.involvedRoommates, id: \.id) { roommate in
@@ -534,7 +534,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Receipt.self, Item.self, Roommate.self, configurations: config)
+    let container = try! ModelContainer(for: Receipt.self, Item.self, Roommate.self, SplitPreference.self, configurations: config)
     
     // Create sample data
     let alice = Roommate(name: "Alice", colorTag: "blue")
