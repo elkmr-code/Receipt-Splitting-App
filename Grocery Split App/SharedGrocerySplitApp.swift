@@ -7,6 +7,6 @@ struct SharedGrocerySplitApp: App {
         WindowGroup {
             ReceiptListView()
         }
-        .modelContainer(for: [Receipt.self, Item.self])
+        .modelContainer(for: [Receipt.self, Item.self, Roommate.self, SplitPreference.self])
     }
 }

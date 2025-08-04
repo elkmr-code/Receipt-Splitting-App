@@ -8,10 +8,11 @@ class Item {
     var price: Double
     var receipt: Receipt?
     
-    init(id: UUID = UUID(), name: String, price: Double) {
+    init(id: UUID = UUID(), name: String, price: Double, receipt: Receipt? = nil) {
         self.id = id
         self.name = name
         self.price = price
+        self.receipt = receipt
     }
 }
 
@@ -21,7 +22,7 @@ class Receipt {
     var name: String
     var date: Date
     var payerName: String
-    @Relationship(deleteRule: .cascade) var items: [Item]?
+    @Relationship(deleteRule: .cascade, inverse: \Item.receipt) var items: [Item]
     
     init(id: UUID = UUID(), name: String, date: Date = Date(), payerName: String) {
         self.id = id
@@ -32,6 +33,6 @@ class Receipt {
     }
     
     var totalCost: Double {
-        return items?.reduce(0) { $0 + $1.price } ?? 0
+        return items.reduce(0) { $0 + $1.price }
     }
 }
