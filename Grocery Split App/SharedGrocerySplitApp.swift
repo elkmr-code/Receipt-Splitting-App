@@ -2,11 +2,11 @@ import SwiftUI
 import SwiftData
 
 @main
-struct SharedGrocerySplitApp: App {
+struct ExpenseSplitApp: App {
     var body: some Scene {
         WindowGroup {
-            ReceiptListView()
+            ExpenseListView()
         }
-        .modelContainer(for: [Receipt.self, Item.self, Roommate.self, SplitPreference.self])
+        .modelContainer(for: [Expense.self, ExpenseItem.self])
     }
 }

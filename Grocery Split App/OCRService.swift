@@ -7,7 +7,7 @@ class OCRService: ObservableObject {
     @Published var isProcessing = false
     @Published var lastError: String?
     
-    func performOCR(on image: UIImage) async throws -> String {
+    func recognizeText(from image: UIImage) async throws -> String {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.main.async {
                 self.isProcessing = true
@@ -36,15 +36,23 @@ class OCRService: ObservableObject {
                     return
                 }
                 
-                let observations = request.results as? [VNRecognizedTextObservation] ?? []
+                guard let observations = request.results as? [VNRecognizedTextObservation] else {
+                    continuation.resume(throwing: OCRError.noTextFound)
+                    return
+                }
+                
                 let recognizedText = observations.compactMap { observation in
                     observation.topCandidates(1).first?.string
                 }.joined(separator: "\n")
                 
-                continuation.resume(returning: recognizedText)
+                if recognizedText.isEmpty {
+                    continuation.resume(throwing: OCRError.noTextFound)
+                } else {
+                    continuation.resume(returning: recognizedText)
+                }
             }
             
-            // Configure for accuracy and grocery receipt text
+            // Configure the request for better accuracy
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
             request.recognitionLanguages = ["en-US"]
@@ -111,14 +119,17 @@ class OCRService: ObservableObject {
 
 enum OCRError: Error, LocalizedError {
     case invalidImage
+    case noTextFound
     case processingFailed
     
     var errorDescription: String? {
         switch self {
         case .invalidImage:
             return "Invalid image format"
+        case .noTextFound:
+            return "No text found in the image"
         case .processingFailed:
-            return "Failed to process text recognition"
+            return "Failed to process the image"
         }
     }
 }

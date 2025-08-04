@@ -1,562 +1,497 @@
 import SwiftUI
 import SwiftData
-import Charts
 
-struct ReceiptDetailView: View {
+struct ExpenseDetailView: View {
+    @Bindable var expense: Expense
     @Environment(\.modelContext) private var modelContext
-    @Query private var roommates: [Roommate]
-    
-    let receipt: Receipt
-    
-    @State private var showingShareSheet = false
-    @State private var showingEditMode = false
-    @State private var selectedItem: Item?
-    @State private var showingReassignSheet = false
+    @State private var showingEditSheet = false
+    @State private var showingSplitView = false
     
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    receiptHeaderSection
-                    balanceSummarySection
-                    itemsGroupedByRoommateSection
-                    settlementSection
-                    if !receipt.isSettled {
-                        actionsSection
-                    }
-                }
-                .padding()
-            }
-            .navigationTitle("Receipt Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button {
-                            showingShareSheet = true
-                        } label: {
-                            Label("Share Split", systemImage: "square.and.arrow.up")
-                        }
-                        
-                        Button {
-                            showingEditMode.toggle()
-                        } label: {
-                            Label(showingEditMode ? "Done Editing" : "Edit Items", 
-                                  systemImage: showingEditMode ? "checkmark" : "pencil")
-                        }
-                        
-                        if !receipt.isSettled {
-                            Button {
-                                markAsSettled()
-                            } label: {
-                                Label("Mark as Settled", systemImage: "checkmark.circle")
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                }
-            }
-            .sheet(isPresented: $showingShareSheet) {
-                ShareSheet(receipt: receipt)
-            }
-            .sheet(item: $selectedItem) { item in
-                ReassignItemSheet(item: item, roommates: roommates) { newRoommate in
-                    reassignItem(item, to: newRoommate)
-                }
-            }
-        }
-    }
-    
-    private var receiptHeaderSection: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "receipt.fill")
-                    .font(.title)
-                    .foregroundColor(.blue)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(receipt.date, style: .date)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text("\(receipt.items.count) items")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(receipt.calculatedTotal, format: .currency(code: "USD"))
-                        .font(.title)
-                        .fontWeight(.bold)
-                    
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Expense Header Card
+                VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Circle()
-                            .fill(receipt.isSettled ? .green : .orange)
-                            .frame(width: 8, height: 8)
+                        Image(systemName: expense.category.icon)
+                            .font(.title2)
+                            .foregroundColor(.blue)
                         
-                        Text(receipt.isSettled ? "Settled" : "Pending")
-                            .font(.caption)
-                            .foregroundColor(receipt.isSettled ? .green : .orange)
-                    }
-                }
-            }
-            .padding()
-            .background(Color(.systemBackground))
-            .cornerRadius(16)
-            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-        }
-    }
-    
-    private var balanceSummarySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Balance Summary")
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            let balances = receipt.calculateBalances()
-            let avgAmount = balances.isEmpty ? 0.0 : receipt.calculatedTotal / Double(balances.count)
-            
-            VStack(spacing: 12) {
-                ForEach(receipt.involvedRoommates, id: \.id) { roommate in
-                    let amount = balances[roommate] ?? 0.0
-                    let difference = amount - avgAmount
-                    
-                    HStack {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(roommate.displayColor)
-                                .frame(width: 20, height: 20)
-                            
-                            Text(roommate.name)
-                                .font(.body)
-                                .fontWeight(.medium)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(expense.name)
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            Text(expense.category.rawValue)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                         
                         Spacer()
                         
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(amount, format: .currency(code: "USD"))
-                                .font(.body)
-                                .fontWeight(.semibold)
-                            
-                            if abs(difference) > 0.01 {
-                                Text(difference > 0 ? "owes \(difference, format: .currency(code: "USD"))" : "gets \(abs(difference), format: .currency(code: "USD"))")
+                        Button(action: { showingEditSheet = true }) {
+                            Image(systemName: "pencil")
+                                .font(.title3)
+                                .foregroundColor(.blue)
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("Date:")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(expense.date, style: .date)
+                                .font(.subheadline)
+                        }
+                        
+                        HStack {
+                            Text("Paid by:")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(expense.payerName)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                        
+                        HStack {
+                            Text("Payment Method:")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Image(systemName: expense.paymentMethod.icon)
                                     .font(.caption)
-                                    .foregroundColor(difference > 0 ? .red : .green)
-                            } else {
-                                Text("even")
-                                    .font(.caption)
+                                Text(expense.paymentMethod.rawValue)
+                                    .font(.subheadline)
+                            }
+                        }
+                        
+                        if !expense.notes.isEmpty {
+                            HStack {
+                                Text("Notes:")
+                                    .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                Spacer()
+                                Text(expense.notes)
+                                    .font(.subheadline)
+                                    .multilineTextAlignment(.trailing)
                             }
                         }
                     }
-                    .padding()
-                    .background(roommate.displayColor.opacity(0.1))
-                    .cornerRadius(12)
-                }
-            }
-            
-            // Balance chart using iOS 17 Charts
-            if #available(iOS 17.0, *) {
-                balanceChartSection(balances: balances)
-            }
-        }
-    }
-    
-    @available(iOS 17.0, *)
-    private func balanceChartSection(balances: [Roommate: Double]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Spending Breakdown")
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-            
-            Chart {
-                ForEach(receipt.involvedRoommates, id: \.id) { roommate in
-                    let amount = balances[roommate] ?? 0.0
-                    SectorMark(
-                        angle: .value("Amount", amount),
-                        innerRadius: .ratio(0.4),
-                        angularInset: 2
-                    )
-                    .foregroundStyle(roommate.displayColor)
-                    .opacity(0.8)
-                }
-            }
-            .frame(height: 120)
-        }
-        .padding(.top)
-    }
-    
-    private var itemsGroupedByRoommateSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Items by Person")
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            ForEach(receipt.involvedRoommates, id: \.id) { roommate in
-                RoommateItemsSection(
-                    roommate: roommate,
-                    items: receipt.items.filter { $0.assignedTo?.id == roommate.id },
-                    isEditMode: showingEditMode
-                ) { item in
-                    if showingEditMode {
-                        selectedItem = item
-                    }
-                }
-            }
-        }
-    }
-    
-    private var settlementSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Settlement")
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            let suggestions = receipt.settlementSuggestions()
-            
-            if suggestions.isEmpty {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
                     
-                    Text("All balanced! No transfers needed.")
-                        .font(.body)
-                        .foregroundColor(.secondary)
+                    Divider()
+                    
+                    HStack {
+                        Text("Total Amount:")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Text(expense.totalCost, format: .currency(code: "USD"))
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
+                    }
                 }
                 .padding()
-                .background(Color.green.opacity(0.1))
-                .cornerRadius(12)
-            } else {
-                VStack(spacing: 12) {
-                    ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
-                        SettlementRow(suggestion: suggestion)
+                .background(Color(.systemBackground))
+                .cornerRadius(15)
+                .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+                
+                // Items Section
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("Items (\(expense.items.count))")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        
+                        Spacer()
+                        
+                        if !expense.items.isEmpty {
+                            Button(action: { showingSplitView = true }) {
+                                Label("Split Bill", systemImage: "person.3.fill")
+                                    .font(.subheadline)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color.blue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(8)
+                            }
+                        }
                     }
-                }
-            }
-        }
-    }
-    
-    private var actionsSection: some View {
-        VStack(spacing: 12) {
-            Button {
-                markAsSettled()
-            } label: {
-                Label("Mark as Settled", systemImage: "checkmark.circle.fill")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.green)
-                    .cornerRadius(12)
-            }
-            
-            Button {
-                showingShareSheet = true
-            } label: {
-                Label("Share Summary", systemImage: "square.and.arrow.up")
-                    .font(.headline)
-                    .foregroundColor(.blue)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(12)
-            }
-        }
-    }
-    
-    private func markAsSettled() {
-        withAnimation(.easeInOut(duration: 0.5)) {
-            receipt.isSettled = true
-            try? modelContext.save()
-        }
-    }
-    
-    private func reassignItem(_ item: Item, to roommate: Roommate) {
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-            item.assignedTo = roommate
-            try? modelContext.save()
-        }
-    }
-}
-
-struct RoommateItemsSection: View {
-    let roommate: Roommate
-    let items: [Item]
-    let isEditMode: Bool
-    let onItemTap: (Item) -> Void
-    
-    var totalAmount: Double {
-        items.reduce(0) { $0 + $1.totalPrice }
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(roommate.displayColor)
-                        .frame(width: 16, height: 16)
                     
-                    Text(roommate.name)
-                        .font(.headline)
+                    if expense.items.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "list.bullet")
+                                .font(.system(size: 40))
+                                .foregroundColor(.gray)
+                            
+                            Text("No items added")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                            
+                            Text("This expense doesn't have itemized details")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                    } else {
+                        LazyVStack(spacing: 1) {
+                            ForEach(expense.items.sorted(by: { $0.name < $1.name })) { item in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.name)
+                                            .font(.body)
+                                            .fontWeight(.medium)
+                                        Text("Individual item")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Text(item.price, format: .currency(code: "USD"))
+                                        .font(.body)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                }
+                                .padding()
+                                .background(Color(.systemBackground))
+                            }
+                        }
+                        .background(Color(.systemGray5))
+                        .cornerRadius(12)
+                    }
                 }
                 
-                Spacer()
-                
-                Text(totalAmount, format: .currency(code: "USD"))
-                    .font(.headline)
-                    .fontWeight(.semibold)
-            }
-            
-            LazyVStack(spacing: 8) {
-                ForEach(items, id: \.id) { item in
-                    ItemRow(item: item, isEditMode: isEditMode) {
-                        onItemTap(item)
+                // Quick Actions
+                VStack(spacing: 12) {
+                    Text("Quick Actions")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    HStack(spacing: 12) {
+                        Button(action: { showingEditSheet = true }) {
+                            VStack(spacing: 8) {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 30))
+                                Text("Edit")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.orange)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                        }
+                        
+                        Button(action: shareExpense) {
+                            VStack(spacing: 8) {
+                                Image(systemName: "square.and.arrow.up.circle.fill")
+                                    .font(.system(size: 30))
+                                Text("Share")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                        }
+                        
+                        if !expense.items.isEmpty {
+                            Button(action: { showingSplitView = true }) {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "person.3.circle.fill")
+                                        .font(.system(size: 30))
+                                    Text("Split")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                        }
                     }
                 }
             }
+            .padding()
         }
-        .padding()
-        .background(roommate.displayColor.opacity(0.1))
-        .cornerRadius(16)
-        .animation(.default, value: items.count)
+        .navigationTitle("Expense Details")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingEditSheet) {
+            EditExpenseView(expense: expense)
+        }
+        .sheet(isPresented: $showingSplitView) {
+            SplitExpenseView(expense: expense)
+        }
     }
-}
-
-struct ItemRow: View {
-    let item: Item
-    let isEditMode: Bool
-    let onTap: () -> Void
     
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(.body)
-                    .fontWeight(.medium)
-                
-                if item.quantity > 1 {
-                    Text("Qty: \(item.quantity)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 8) {
-                Text(item.totalPrice, format: .currency(code: "USD"))
-                    .font(.body)
-                    .fontWeight(.semibold)
-                
-                if isEditMode {
-                    Button {
-                        onTap()
-                    } label: {
-                        Image(systemName: "person.2.fill")
-                            .font(.caption)
-                            .foregroundColor(.blue)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if isEditMode {
-                onTap()
-            }
+    private func shareExpense() {
+        let itemsList = expense.items.isEmpty ? "No itemized details" : expense.items.map { "• \($0.name): $\(String(format: "%.2f", $0.price))" }.joined(separator: "\n")
+        
+        let shareText = """
+        💰 Expense: \(expense.name)
+        📅 Date: \(expense.date.formatted(date: .abbreviated, time: .omitted))
+        💳 Paid by: \(expense.payerName)
+        🏷️ Category: \(expense.category.rawValue)
+        💶 Payment: \(expense.paymentMethod.rawValue)
+        💵 Total: $\(String(format: "%.2f", expense.totalCost))
+        
+        📝 Items:
+        \(itemsList)
+        
+        Generated with Expense Split App
+        """
+        
+        let activityViewController = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first,
+           let rootViewController = window.rootViewController {
+            rootViewController.present(activityViewController, animated: true)
         }
     }
 }
 
-struct SettlementRow: View {
-    let suggestion: (from: Roommate, to: Roommate, amount: Double)
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // From person
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(suggestion.from.displayColor)
-                    .frame(width: 12, height: 12)
-                
-                Text(suggestion.from.name)
-                    .font(.body)
-                    .fontWeight(.medium)
-            }
-            
-            Image(systemName: "arrow.right")
-                .foregroundColor(.secondary)
-            
-            // To person
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(suggestion.to.displayColor)
-                    .frame(width: 12, height: 12)
-                
-                Text(suggestion.to.name)
-                    .font(.body)
-                    .fontWeight(.medium)
-            }
-            
-            Spacer()
-            
-            Text(suggestion.amount, format: .currency(code: "USD"))
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.blue)
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
-    }
-}
-
-struct ReassignItemSheet: View {
-    let item: Item
-    let roommates: [Roommate]
-    let onReassign: (Roommate) -> Void
-    
+struct EditExpenseView: View {
+    @Bindable var expense: Expense
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Text("Reassign Item")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text("Who should \"\(item.name)\" be assigned to?")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+            Form {
+                Section("Basic Information") {
+                    TextField("Expense Name", text: $expense.name)
+                    TextField("Payer Name", text: $expense.payerName)
+                    DatePicker("Date", selection: $expense.date, displayedComponents: .date)
                 }
                 
-                VStack(spacing: 12) {
-                    ForEach(roommates, id: \.id) { roommate in
-                        Button {
-                            onReassign(roommate)
-                            dismiss()
-                        } label: {
+                Section("Category & Payment") {
+                    Picker("Category", selection: $expense.category) {
+                        ForEach(ExpenseCategory.allCases, id: \.self) { category in
                             HStack {
-                                Circle()
-                                    .fill(roommate.displayColor)
-                                    .frame(width: 20, height: 20)
-                                
-                                Text(roommate.name)
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
-                                
-                                Spacer()
-                                
-                                if item.assignedTo?.id == roommate.id {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.blue)
-                                }
+                                Image(systemName: category.icon)
+                                Text(category.rawValue)
                             }
-                            .padding()
-                            .background(roommate.displayColor.opacity(0.1))
-                            .cornerRadius(12)
+                            .tag(category)
+                        }
+                    }
+                    
+                    Picker("Payment Method", selection: $expense.paymentMethod) {
+                        ForEach(PaymentMethod.allCases, id: \.self) { method in
+                            HStack {
+                                Image(systemName: method.icon)
+                                Text(method.rawValue)
+                            }
+                            .tag(method)
                         }
                     }
                 }
                 
-                Spacer()
+                Section("Notes") {
+                    TextField("Notes (optional)", text: $expense.notes, axis: .vertical)
+                        .lineLimit(3...6)
+                }
             }
-            .padding()
+            .navigationTitle("Edit Expense")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        try? modelContext.save()
                         dismiss()
                     }
                 }
             }
         }
-        .presentationDetents([.medium])
     }
 }
 
-struct ShareSheet: UIViewControllerRepresentable {
-    let receipt: Receipt
+struct SplitExpenseView: View {
+    let expense: Expense
+    @Environment(\.dismiss) private var dismiss
+    @State private var people: [String] = [""]
+    @State private var splitMethod: SplitMethod = .equally
     
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let text = generateShareText()
-        let activityViewController = UIActivityViewController(
-            activityItems: [text],
-            applicationActivities: nil
-        )
-        return activityViewController
+    enum SplitMethod: String, CaseIterable {
+        case equally = "Split Equally"
+        case byAmount = "Split by Amount"
+        case byPercentage = "Split by Percentage"
     }
     
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Expense Summary
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Splitting: \(expense.name)")
+                            .font(.headline)
+                        Text("Total: \(expense.totalCost, format: .currency(code: "USD"))")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
+                        Text("Paid by: \(expense.payerName)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    
+                    // People List
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("People")
+                                .font(.headline)
+                            Spacer()
+                            Button(action: addPerson) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        
+                        ForEach(Array(people.enumerated()), id: \.offset) { index, person in
+                            HStack {
+                                TextField("Person \(index + 1)", text: $people[index])
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                
+                                if people.count > 1 {
+                                    Button(action: { removePerson(at: index) }) {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundColor(.red)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Split Method
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Split Method")
+                            .font(.headline)
+                        
+                        Picker("Split Method", selection: $splitMethod) {
+                            ForEach(SplitMethod.allCases, id: \.self) { method in
+                                Text(method.rawValue).tag(method)
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                    }
+                    
+                    // Split Results
+                    if !people.filter({ !$0.isEmpty }).isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Split Results")
+                                .font(.headline)
+                            
+                            let validPeople = people.filter { !$0.isEmpty }
+                            let amountPerPerson = expense.totalCost / Double(validPeople.count)
+                            
+                            ForEach(validPeople, id: \.self) { person in
+                                HStack {
+                                    Text(person)
+                                        .font(.body)
+                                    Spacer()
+                                    Text("$\(String(format: "%.2f", amountPerPerson))")
+                                        .font(.body)
+                                        .fontWeight(.semibold)
+                                }
+                                .padding()
+                                .background(Color(.systemBackground))
+                                .cornerRadius(8)
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                    }
+                    
+                    // Share Button
+                    if !people.filter({ !$0.isEmpty }).isEmpty {
+                        Button(action: shareSplit) {
+                            Text("Share Split Details")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Split Expense")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
     
-    private func generateShareText() -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
+    private func addPerson() {
+        people.append("")
+    }
+    
+    private func removePerson(at: Int) {
+        people.remove(at: at)
+    }
+    
+    private func shareSplit() {
+        let validPeople = people.filter { !$0.isEmpty }
+        let amountPerPerson = expense.totalCost / Double(validPeople.count)
         
-        var text = "🛒 Grocery Split Summary\n"
-        text += "Date: \(formatter.string(from: receipt.date))\n"
-        text += "Total: \(receipt.calculatedTotal.formatted(.currency(code: "USD")))\n\n"
+        let splitDetails = validPeople.map { "\($0): $\(String(format: "%.2f", amountPerPerson))" }.joined(separator: "\n")
         
-        text += "Items by person:\n"
-        for roommate in receipt.involvedRoommates {
-            let roommateItems = receipt.items.filter { $0.assignedTo?.id == roommate.id }
-            let total = roommateItems.reduce(0) { $0 + $1.totalPrice }
-            
-            text += "\n\(roommate.name): \(total.formatted(.currency(code: "USD")))\n"
-            for item in roommateItems {
-                text += "  • \(item.name): \(item.totalPrice.formatted(.currency(code: "USD")))\n"
-            }
+        let shareText = """
+        💰 Expense Split: \(expense.name)
+        💵 Total: $\(String(format: "%.2f", expense.totalCost))
+        💳 Paid by: \(expense.payerName)
+        
+        💸 Split (\(validPeople.count) people):
+        \(splitDetails)
+        
+        Generated with Expense Split App
+        """
+        
+        let activityViewController = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
+        
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first,
+           let rootViewController = window.rootViewController {
+            rootViewController.present(activityViewController, animated: true)
         }
-        
-        let suggestions = receipt.settlementSuggestions()
-        if !suggestions.isEmpty {
-            text += "\nSettlement:\n"
-            for suggestion in suggestions {
-                text += "\(suggestion.from.name) owes \(suggestion.to.name) \(suggestion.amount.formatted(.currency(code: "USD")))\n"
-            }
-        }
-        
-        text += "\nShared via Grocery Split App"
-        
-        return text
     }
 }
 
 #Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Receipt.self, Item.self, Roommate.self, SplitPreference.self, configurations: config)
-    
-    // Create sample data
-    let alice = Roommate(name: "Alice", colorTag: "blue")
-    let bob = Roommate(name: "Bob", colorTag: "green")
-    
-    let receipt = Receipt()
-    let item1 = Item(name: "Bananas", price: 3.99)
-    let item2 = Item(name: "Milk", price: 4.59)
-    
-    item1.assignedTo = alice
-    item2.assignedTo = bob
-    item1.receipt = receipt
-    item2.receipt = receipt
-    
-    receipt.items = [item1, item2]
-    
-    container.mainContext.insert(alice)
-    container.mainContext.insert(bob)
-    container.mainContext.insert(receipt)
-    container.mainContext.insert(item1)
-    container.mainContext.insert(item2)
-    
-    return ReceiptDetailView(receipt: receipt)
-        .modelContainer(container)
+    let expense = Expense(name: "Sample Dinner", payerName: "John", paymentMethod: .creditCard, category: .dining)
+    return ExpenseDetailView(expense: expense)
+        .modelContainer(for: [Expense.self, ExpenseItem.self])
 }

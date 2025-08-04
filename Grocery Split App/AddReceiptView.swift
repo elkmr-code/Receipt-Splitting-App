@@ -1,51 +1,293 @@
 import SwiftUI
-import SwiftData
 import PhotosUI
-import Vision
+import SwiftData
 
-struct AddReceiptView: View {
+struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Query private var roommates: [Roommate]
     
-    @StateObject private var ocrService = OCRService()
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var receiptImage: UIImage?
-    @State private var isScanning = false
-    @State private var ocrText = ""
-    @State private var parsedItems: [ParsedItem] = []
-    @State private var splitItems: [Item] = []
-    @State private var showingPreview = false
-    @State private var errorMessage = ""
+    @State private var selectedItem: PhotosPickerItem?
+    @State private var selectedImage: UIImage?
+    @State private var isProcessing = false
+    @State private var parsedItems: [(name: String, price: Double)] = []
+    @State private var expenseName = ""
+    @State private var payerName = ""
+    @State private var selectedCategory: ExpenseCategory = .other
+    @State private var selectedPaymentMethod: PaymentMethod = .cash
+    @State private var notes = ""
+    @State private var showingParsedItems = false
+    @State private var showingManualEntry = false
     @State private var showingError = false
+    @State private var errorMessage = ""
     
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    headerSection
-                    
-                    if receiptImage == nil {
-                        inputOptionsSection
-                    } else {
-                        imagePreviewSection
+                VStack(spacing: 20) {
+                    // Entry Method Selection
+                    VStack(spacing: 16) {
+                        Text("How would you like to add this expense?")
+                            .font(.headline)
+                            .multilineTextAlignment(.center)
+                        
+                        HStack(spacing: 12) {
+                            Button(action: { showingManualEntry = true }) {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.system(size: 30))
+                                    Text("Manual Entry")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.green)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                            
+                            PhotosPicker(selection: $selectedItem, matching: .images) {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "camera")
+                                        .font(.system(size: 30))
+                                    Text("Scan Receipt")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                            
+                            Button(action: loadSampleReceipt) {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "doc.text.image")
+                                        .font(.system(size: 30))
+                                    Text("Try Sample")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.orange)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                        }
                     }
                     
-                    if !ocrText.isEmpty {
-                        ocrResultsSection
+                    // Image Preview
+                    if let selectedImage = selectedImage {
+                        VStack(spacing: 12) {
+                            Text("Receipt Image")
+                                .font(.headline)
+                            
+                            Image(uiImage: selectedImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 300)
+                                .cornerRadius(12)
+                                .shadow(radius: 3)
+                        }
                     }
                     
-                    if !parsedItems.isEmpty {
-                        parsedItemsSection
+                    // Expense Details Input
+                    if selectedImage != nil || showingManualEntry {
+                        VStack(spacing: 16) {
+                            Text("Expense Details")
+                                .font(.headline)
+                            
+                            VStack(spacing: 12) {
+                                TextField("Expense name (e.g., Dinner at Italian Restaurant)", text: $expenseName)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                
+                                TextField("Who paid for this?", text: $payerName)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                
+                                // Category Picker
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Category")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    
+                                    Picker("Category", selection: $selectedCategory) {
+                                        ForEach(ExpenseCategory.allCases, id: \.self) { category in
+                                            HStack {
+                                                Image(systemName: category.icon)
+                                                Text(category.rawValue)
+                                            }
+                                            .tag(category)
+                                        }
+                                    }
+                                    .pickerStyle(MenuPickerStyle())
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding()
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(8)
+                                }
+                                
+                                // Payment Method Picker
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Payment Method")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    
+                                    Picker("Payment Method", selection: $selectedPaymentMethod) {
+                                        ForEach(PaymentMethod.allCases, id: \.self) { method in
+                                            HStack {
+                                                Image(systemName: method.icon)
+                                                Text(method.rawValue)
+                                            }
+                                            .tag(method)
+                                        }
+                                    }
+                                    .pickerStyle(MenuPickerStyle())
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding()
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(8)
+                                }
+                                
+                                TextField("Notes (optional)", text: $notes, axis: .vertical)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .lineLimit(2...4)
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(15)
+                        .shadow(radius: 2)
                     }
                     
-                    if !splitItems.isEmpty {
-                        splitPreviewSection
+                    // Process/Continue Button
+                    if (selectedImage != nil || showingManualEntry) && !expenseName.isEmpty && !payerName.isEmpty {
+                        if selectedImage != nil {
+                            Button(action: processImage) {
+                                HStack {
+                                    if isProcessing {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                    }
+                                    Text(isProcessing ? "Processing Receipt..." : "Scan Receipt Items")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(isProcessing ? Color(.systemGray) : Color(.systemGreen))
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                            .disabled(isProcessing)
+                        } else {
+                            Button(action: { showingParsedItems = true; parsedItems = [] }) {
+                                Text("Continue to Add Items")
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color(.systemGreen))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
+                            }
+                        }
+                    }
+                    
+                    // Parsed/Manual Items Review
+                    if showingParsedItems {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                Text("Expense Items")
+                                    .font(.headline)
+                                Spacer()
+                                Button(action: addNewItem) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title2)
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                            
+                            if parsedItems.isEmpty {
+                                VStack(spacing: 12) {
+                                    Text("No items found in receipt")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text("This is normal when scanning receipts without clear item details. You can add items manually.")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal)
+                                    
+                                    Button(action: addNewItem) {
+                                        Label("Add Item Manually", systemImage: "plus")
+                                            .padding()
+                                            .background(Color.blue)
+                                            .foregroundColor(.white)
+                                            .cornerRadius(8)
+                                    }
+                                }
+                                .padding()
+                                .background(Color(.systemGray6))
+                                .cornerRadius(12)
+                            } else {
+                                LazyVStack(spacing: 8) {
+                                    ForEach(Array(parsedItems.enumerated()), id: \.offset) { index, item in
+                                        EditableItemRow(
+                                            item: item,
+                                            onUpdate: { updatedItem in
+                                                parsedItems[index] = updatedItem
+                                            },
+                                            onDelete: {
+                                                parsedItems.remove(at: index)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            
+                            if !parsedItems.isEmpty {
+                                let total = parsedItems.reduce(0) { $0 + $1.price }
+                                HStack {
+                                    Text("Total:")
+                                        .font(.title3)
+                                        .fontWeight(.bold)
+                                    Spacer()
+                                    Text(total, format: .currency(code: "USD"))
+                                        .font(.title3)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(.green)
+                                }
+                                .padding()
+                                .background(Color(.systemGray6))
+                                .cornerRadius(12)
+                                
+                                Button(action: saveExpense) {
+                                    Text("Save Expense")
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color(.systemBlue))
+                                        .foregroundColor(.white)
+                                        .cornerRadius(12)
+                                }
+                            } else {
+                                Button(action: saveExpenseWithoutItems) {
+                                    Text("Save Expense Without Items")
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(Color(.systemBlue))
+                                        .foregroundColor(.white)
+                                        .cornerRadius(12)
+                                }
+                            }
+                        }
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(15)
+                        .shadow(radius: 3)
                     }
                 }
                 .padding()
             }
-            .navigationTitle("Add Receipt")
+            .navigationTitle("Add Expense")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -53,434 +295,180 @@ struct AddReceiptView: View {
                         dismiss()
                     }
                 }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        saveReceipt()
+            }
+        }
+        .onChange(of: selectedItem) { _, newItem in
+            Task {
+                if let newItem = newItem {
+                    if let data = try? await newItem.loadTransferable(type: Data.self) {
+                        if let uiImage = UIImage(data: data) {
+                            selectedImage = uiImage
+                            showingManualEntry = false
+                        }
                     }
-                    .disabled(splitItems.isEmpty)
-                    .fontWeight(.semibold)
-                }
-            }
-            .alert("Error", isPresented: $showingError) {
-                Button("OK") { }
-            } message: {
-                Text(errorMessage)
-            }
-            .onChange(of: selectedPhoto) { _, newPhoto in
-                loadSelectedPhoto(newPhoto)
-            }
-            .overlay {
-                if isScanning {
-                    scanningOverlay
                 }
             }
         }
-    }
-    
-    private var headerSection: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "receipt.fill")
-                .font(.system(size: 50))
-                .foregroundColor(.blue)
-            
-            Text("Add Grocery Receipt")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            Text("Choose how you'd like to add your receipt")
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+        .alert("Error", isPresented: $showingError) {
+            Button("OK") { }
+        } message: {
+            Text(errorMessage)
         }
     }
     
-    private var inputOptionsSection: some View {
-        VStack(spacing: 16) {
-            // Scan Receipt Button (simulated)
-            Button {
-                simulateScan()
-            } label: {
-                Label("Scan Receipt", systemImage: "camera.fill")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .cornerRadius(12)
-            }
-            
-            // Use Sample Receipt Button
-            Button {
-                useSampleReceipt()
-            } label: {
-                Label("Use Sample Receipt", systemImage: "doc.text.fill")
-                    .font(.headline)
-                    .foregroundColor(.blue)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(12)
-            }
-            
-            // Photo Picker
-            PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                Label("Import from Photos", systemImage: "photo.fill")
-                    .font(.headline)
-                    .foregroundColor(.green)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.green.opacity(0.1))
-                    .cornerRadius(12)
-            }
-        }
-        .padding(.horizontal)
+    private func addNewItem() {
+        parsedItems.append((name: "New Item", price: 0.0))
     }
     
-    private var imagePreviewSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Receipt Image")
-                .font(.headline)
-            
-            if let image = receiptImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 300)
-                    .cornerRadius(12)
-                    .shadow(radius: 4)
-            }
-            
-            HStack {
-                Button("Remove Image") {
-                    receiptImage = nil
-                    ocrText = ""
+    private func processImage() {
+        guard let selectedImage = selectedImage else { return }
+        
+        isProcessing = true
+        showingError = false
+        
+        Task {
+            do {
+                let ocrService = OCRService()
+                let recognizedText = try await ocrService.recognizeText(from: selectedImage)
+                
+                let parser = ReceiptParser()
+                let items = parser.parseItems(from: recognizedText)
+                
+                await MainActor.run {
+                    if items.isEmpty {
+                        parsedItems = []
+                        errorMessage = "No items found in the receipt. This is normal for receipts without clear item details. You can add items manually."
+                        showingError = true
+                    } else {
+                        parsedItems = items.map { (name: $0.name, price: $0.price) }
+                    }
+                    showingParsedItems = true
+                    isProcessing = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = "Error processing receipt: \\(error.localizedDescription)"
+                    showingError = true
+                    isProcessing = false
+                    showingParsedItems = true
                     parsedItems = []
-                    splitItems = []
-                }
-                .foregroundColor(.red)
-                
-                Spacer()
-                
-                if !ocrText.isEmpty {
-                    Button("Process Again") {
-                        processCurrentImage()
-                    }
-                    .foregroundColor(.blue)
                 }
             }
         }
     }
     
-    private var ocrResultsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("OCR Results")
-                .font(.headline)
-            
-            ScrollView {
-                Text(ocrText)
-                    .font(.caption)
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
-            }
-            .frame(maxHeight: 150)
-            
-            Button("Parse Items") {
-                parseItems()
-            }
-            .buttonStyle(.bordered)
-            .disabled(ocrText.isEmpty)
-        }
+    private func loadSampleReceipt() {
+        parsedItems = [
+            (name: "Organic Apples", price: 4.99),
+            (name: "Whole Grain Bread", price: 3.49),
+            (name: "Free Range Eggs", price: 5.99),
+            (name: "Greek Yogurt", price: 6.49),
+            (name: "Olive Oil", price: 8.99)
+        ]
+        expenseName = "Sample Grocery Shopping"
+        payerName = "Demo User"
+        selectedCategory = .groceries
+        selectedPaymentMethod = .creditCard
+        notes = "This is a sample expense to demonstrate the app"
+        showingParsedItems = true
+        showingManualEntry = false
     }
     
-    private var parsedItemsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Parsed Items (\(parsedItems.count))")
-                    .font(.headline)
-                
-                Spacer()
-                
-                Button("Split Items") {
-                    splitParsedItems()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(parsedItems.isEmpty)
-            }
-            
-            LazyVStack(spacing: 8) {
-                ForEach(parsedItems) { item in
-                    ParsedItemRow(item: item)
-                }
-            }
-        }
-    }
-    
-    private var splitPreviewSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Split Preview")
-                .font(.headline)
-            
-            ForEach(roommates, id: \.id) { roommate in
-                RoommateItemsPreview(roommate: roommate, items: splitItems)
-            }
-            
-            HStack {
-                Text("Total: \(splitItems.reduce(0) { $0 + $1.totalPrice }, format: .currency(code: "USD"))")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-            }
-            .padding(.top)
-        }
-    }
-    
-    private var scanningOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.7)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 20) {
-                ProgressView()
-                    .scaleEffect(2)
-                    .tint(.white)
-                
-                Text("Scanning Receipt...")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                
-                Text("Hold your device steady")
-                    .font(.body)
-                    .foregroundColor(.white.opacity(0.8))
-            }
-        }
-    }
-    
-    // MARK: - Actions
-    
-    private func simulateScan() {
-        isScanning = true
-        
-        Task {
-            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            
-            await MainActor.run {
-                isScanning = false
-                useSampleReceipt()
-            }
-        }
-    }
-    
-    private func useSampleReceipt() {
-        // Create a simple sample receipt image (white background with text)
-        let image = createSampleReceiptImage()
-        receiptImage = image
-        
-        Task {
-            do {
-                let text = try await ocrService.simulateOCRProcessing()
-                await MainActor.run {
-                    ocrText = text
-                    parseItems()
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to process sample receipt: \(error.localizedDescription)"
-                    showingError = true
-                }
-            }
-        }
-    }
-    
-    private func loadSelectedPhoto(_ photoItem: PhotosPickerItem?) {
-        guard let photoItem = photoItem else { return }
-        
-        Task {
-            do {
-                if let data = try await photoItem.loadTransferable(type: Data.self),
-                   let image = UIImage(data: data) {
-                    await MainActor.run {
-                        receiptImage = image
-                        processCurrentImage()
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to load image: \(error.localizedDescription)"
-                    showingError = true
-                }
-            }
-        }
-    }
-    
-    private func processCurrentImage() {
-        guard let image = receiptImage else { return }
-        
-        Task {
-            do {
-                let text = try await ocrService.performOCR(on: image)
-                await MainActor.run {
-                    ocrText = text
-                    parseItems()
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = "OCR failed: \(error.localizedDescription)"
-                    showingError = true
-                }
-            }
-        }
-    }
-    
-    private func parseItems() {
-        let (items, _) = ReceiptParser.parseReceiptTextEnhanced(ocrText)
-        parsedItems = items
-        
-        if items.isEmpty {
-            errorMessage = "No items found in the receipt. Try a different image or add items manually."
-            showingError = true
-        } else {
-            splitParsedItems()
-        }
-    }
-    
-    private func splitParsedItems() {
-        guard !roommates.isEmpty else {
-            errorMessage = "No roommates found. Please add roommates first."
-            showingError = true
-            return
-        }
-        
-        splitItems = SplittingService.splitItems(
-            parsedItems,
-            among: Array(roommates),
-            method: .roundRobin,
-            modelContext: modelContext
+    private func saveExpense() {
+        let expense = Expense(
+            name: expenseName,
+            payerName: payerName,
+            paymentMethod: selectedPaymentMethod,
+            category: selectedCategory,
+            notes: notes
         )
-    }
-    
-    private func saveReceipt() {
-        let receipt = Receipt(rawText: ocrText)
-        receipt.items = splitItems
         
-        for item in splitItems {
-            item.receipt = receipt
+        modelContext.insert(expense)
+        
+        for itemData in parsedItems {
+            let item = ExpenseItem(name: itemData.name, price: itemData.price, expense: expense)
             modelContext.insert(item)
+            expense.items.append(item)
         }
         
-        modelContext.insert(receipt)
-        
-        do {
-            try modelContext.save()
-            dismiss()
-        } catch {
-            errorMessage = "Failed to save receipt: \(error.localizedDescription)"
-            showingError = true
-        }
+        try? modelContext.save()
+        dismiss()
     }
     
-    private func createSampleReceiptImage() -> UIImage {
-        let size = CGSize(width: 300, height: 400)
-        let renderer = UIGraphicsImageRenderer(size: size)
+    private func saveExpenseWithoutItems() {
+        let expense = Expense(
+            name: expenseName,
+            payerName: payerName,
+            paymentMethod: selectedPaymentMethod,
+            category: selectedCategory,
+            notes: notes
+        )
         
-        return renderer.image { context in
-            // White background
-            UIColor.white.setFill()
-            context.fill(CGRect(origin: .zero, size: size))
-            
-            // Add some text to simulate a receipt
-            let text = "SAMPLE RECEIPT\n\nBananas $3.99\nMilk $4.59\nBread $4.29"
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 16),
-                .foregroundColor: UIColor.black
-            ]
-            
-            let rect = CGRect(x: 20, y: 50, width: 260, height: 300)
-            text.draw(in: rect, withAttributes: attributes)
-        }
+        modelContext.insert(expense)
+        try? modelContext.save()
+        dismiss()
     }
 }
 
-struct ParsedItemRow: View {
-    let item: ParsedItem
+struct EditableItemRow: View {
+    @State private var item: (name: String, price: Double)
+    let onUpdate: ((name: String, price: Double)) -> Void
+    let onDelete: () -> Void
+    @State private var isEditing = false
+    
+    init(item: (name: String, price: Double), onUpdate: @escaping ((name: String, price: Double)) -> Void, onDelete: @escaping () -> Void) {
+        self._item = State(initialValue: item)
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
+    }
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(.body)
-                    .fontWeight(.medium)
+            if isEditing {
+                VStack(spacing: 8) {
+                    TextField("Item name", text: $item.name)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    
+                    TextField("Price", value: $item.price, format: .currency(code: "USD"))
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.decimalPad)
+                }
                 
-                if item.quantity > 1 {
-                    Text("Qty: \(item.quantity)")
+                Button("Done") {
+                    onUpdate(item)
+                    isEditing = false
+                }
+                .foregroundColor(.blue)
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name)
+                        .font(.body)
+                    Text(item.price, format: .currency(code: "USD"))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                
+                Spacer()
+                
+                Button("Edit") {
+                    isEditing = true
+                }
+                .foregroundColor(.blue)
+                .font(.caption)
             }
             
-            Spacer()
-            
-            Text(item.price * Double(item.quantity), format: .currency(code: "USD"))
-                .font(.body)
-                .fontWeight(.semibold)
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .foregroundColor(.red)
+            }
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 12)
-        .background(Color.gray.opacity(0.05))
+        .padding()
+        .background(Color(.systemGray6))
         .cornerRadius(8)
     }
 }
 
-struct RoommateItemsPreview: View {
-    let roommate: Roommate
-    let items: [Item]
-    
-    private var roommateItems: [Item] {
-        items.filter { $0.assignedTo?.id == roommate.id }
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Circle()
-                    .fill(roommate.displayColor)
-                    .frame(width: 16, height: 16)
-                
-                Text(roommate.name)
-                    .font(.headline)
-                
-                Spacer()
-                
-                Text(roommateItems.reduce(0) { $0 + $1.totalPrice }, format: .currency(code: "USD"))
-                    .font(.headline)
-                    .fontWeight(.semibold)
-            }
-            
-            LazyVStack(alignment: .leading, spacing: 4) {
-                ForEach(roommateItems, id: \.id) { item in
-                    HStack {
-                        Text("• \(item.name)")
-                            .font(.caption)
-                        
-                        Spacer()
-                        
-                        Text(item.totalPrice, format: .currency(code: "USD"))
-                            .font(.caption)
-                    }
-                }
-            }
-            .padding(.leading, 24)
-        }
-        .padding()
-        .background(roommate.displayColor.opacity(0.1))
-        .cornerRadius(12)
-    }
-}
-
 #Preview {
-    AddReceiptView()
-        .modelContainer(for: [Receipt.self, Item.self, Roommate.self, SplitPreference.self])
+    AddExpenseView()
+        .modelContainer(for: [Expense.self, ExpenseItem.self])
 }

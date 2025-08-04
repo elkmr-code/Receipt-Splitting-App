@@ -1,6 +1,17 @@
 import Foundation
 
+struct ParsedItem {
+    let name: String
+    let price: Double
+    let quantity: Int
+}
+
 class ReceiptParser {
+    
+    // Add the method that AddReceiptView expects
+    func parseItems(from text: String) -> [ParsedItem] {
+        return ReceiptParser.parseReceiptText(text)
+    }
     
     static func parseReceiptText(_ text: String) -> [ParsedItem] {
         let lines = text.components(separatedBy: .newlines)
