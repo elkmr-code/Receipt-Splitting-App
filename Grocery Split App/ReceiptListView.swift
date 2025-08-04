@@ -329,7 +329,7 @@ struct DemoModeView: View {
             
             // Step 5: Create receipt
             try await Task.sleep(nanoseconds: 500_000_000)
-            let receipt = Receipt(rawText: ocrText, total: total ?? 0.0)
+            let receipt = Receipt(rawText: ocrText)
             receipt.items = items
             
             for item in items {
