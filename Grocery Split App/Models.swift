@@ -71,6 +71,8 @@ class Receipt {
     
     func settlementSuggestions() -> [(from: Roommate, to: Roommate, amount: Double)] {
         let balances = calculateBalances()
+        guard !balances.isEmpty else { return [] }
+        
         let total = calculatedTotal
         let avgAmount = total / Double(balances.count)
         

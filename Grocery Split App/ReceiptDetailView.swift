@@ -117,7 +117,7 @@ struct ReceiptDetailView: View {
                 .fontWeight(.semibold)
             
             let balances = receipt.calculateBalances()
-            let avgAmount = receipt.calculatedTotal / Double(balances.count)
+            let avgAmount = balances.isEmpty ? 0.0 : receipt.calculatedTotal / Double(balances.count)
             
             VStack(spacing: 12) {
                 ForEach(receipt.involvedRoommates, id: \.id) { roommate in
