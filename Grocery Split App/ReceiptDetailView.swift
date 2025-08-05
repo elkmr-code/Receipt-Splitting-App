@@ -188,6 +188,7 @@ struct ExpenseDetailView: View {
                                     .fontWeight(.medium)
                             }
                             .frame(maxWidth: .infinity)
+                            .frame(height: 60)
                             .padding()
                             .background(Color.orange)
                             .foregroundColor(.white)
@@ -203,6 +204,7 @@ struct ExpenseDetailView: View {
                                     .fontWeight(.medium)
                             }
                             .frame(maxWidth: .infinity)
+                            .frame(height: 60)
                             .padding()
                             .background(Color.blue)
                             .foregroundColor(.white)
@@ -219,6 +221,7 @@ struct ExpenseDetailView: View {
                                         .fontWeight(.medium)
                                 }
                                 .frame(maxWidth: .infinity)
+                                .frame(height: 60)
                                 .padding()
                                 .background(Color.green)
                                 .foregroundColor(.white)

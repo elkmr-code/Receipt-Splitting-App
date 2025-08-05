@@ -258,6 +258,16 @@ struct EnhancedSplitExpenseView: View {
                         .foregroundColor(.orange)
                 }
                 .padding(.horizontal)
+                
+                Button("Auto-adjust to match total") {
+                    autoAdjustSplit()
+                }
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color.orange)
+                .foregroundColor(.white)
+                .cornerRadius(6)
             }
         }
     }
@@ -571,6 +581,22 @@ struct EnhancedSplitExpenseView: View {
     
     private func generatePaymentInstructions() -> String {
         return "Please send payment to \(expense.payerName) when convenient."
+    }
+    
+    private func autoAdjustSplit() {
+        // For custom splits, automatically adjust to match the total
+        let totalSplit = participants.reduce(0) { $0 + $1.amount }
+        let difference = expense.totalCost - totalSplit
+        
+        guard !participants.isEmpty && abs(difference) > 0.01 else { return }
+        
+        // Adjust the first participant's amount to make the total correct
+        participants[0].amount += difference
+        
+        // If using percentage split, update percentage accordingly
+        if splitMethod == .percentageSplit {
+            participants[0].percentage = (participants[0].amount / expense.totalCost) * 100
+        }
     }
 }
 
