@@ -17,7 +17,7 @@ class OCRService: ObservableObject {
             guard let cgImage = image.cgImage else {
                 DispatchQueue.main.async {
                     self.isProcessing = false
-                    self.lastError = "Failed to process image"
+                    self.lastError = "Failed to process image - invalid image format"
                 }
                 continuation.resume(throwing: OCRError.invalidImage)
                 return
@@ -37,6 +37,9 @@ class OCRService: ObservableObject {
                 }
                 
                 guard let observations = request.results as? [VNRecognizedTextObservation] else {
+                    DispatchQueue.main.async {
+                        self.lastError = "No text could be detected in the image"
+                    }
                     continuation.resume(throwing: OCRError.noTextFound)
                     return
                 }
@@ -45,7 +48,10 @@ class OCRService: ObservableObject {
                     observation.topCandidates(1).first?.string
                 }.joined(separator: "\n")
                 
-                if recognizedText.isEmpty {
+                if recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    DispatchQueue.main.async {
+                        self.lastError = "No readable text found in the image"
+                    }
                     continuation.resume(throwing: OCRError.noTextFound)
                 } else {
                     continuation.resume(returning: recognizedText)

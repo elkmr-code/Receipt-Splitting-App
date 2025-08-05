@@ -15,8 +15,8 @@ enum SplitPreference: String, CaseIterable {
 class SplittingService {
     
     static func splitExpense(_ expense: Expense, among people: [String], preference: SplitPreference = .equally) -> [Person] {
-        let validPeople = people.filter { !$0.isEmpty }
-        guard !validPeople.isEmpty else { return [] }
+        let validPeople = people.filter { !$0.isEmpty && $0.trimmingCharacters(in: .whitespacesAndNewlines) != "" }
+        guard !validPeople.isEmpty && expense.totalCost > 0 else { return [] }
         
         switch preference {
         case .equally:
@@ -31,8 +31,9 @@ class SplittingService {
     }
     
     private static func splitEqually(_ expense: Expense, among people: [String]) -> [Person] {
+        guard !people.isEmpty && expense.totalCost > 0 else { return [] }
         let amountPerPerson = expense.totalCost / Double(people.count)
-        return people.map { Person(name: $0, amountOwed: amountPerPerson) }
+        return people.map { Person(name: $0.trimmingCharacters(in: .whitespacesAndNewlines), amountOwed: amountPerPerson) }
     }
     
     static func calculateTotalOwed(for people: [Person]) -> Double {

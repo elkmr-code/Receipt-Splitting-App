@@ -258,6 +258,16 @@ struct EnhancedSplitExpenseView: View {
                         .foregroundColor(.orange)
                 }
                 .padding(.horizontal)
+                
+                Button("Auto-adjust to match total") {
+                    autoAdjustSplit()
+                }
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color.orange)
+                .foregroundColor(.white)
+                .cornerRadius(6)
             }
         }
     }
@@ -356,6 +366,7 @@ struct EnhancedSplitExpenseView: View {
                         .font(.caption)
                 }
                 .frame(maxWidth: .infinity)
+                .frame(height: 60)
                 .padding()
                 .background(Color.green)
                 .foregroundColor(.white)
@@ -371,6 +382,7 @@ struct EnhancedSplitExpenseView: View {
                         .font(.caption)
                 }
                 .frame(maxWidth: .infinity)
+                .frame(height: 60)
                 .padding()
                 .background(Color.blue)
                 .foregroundColor(.white)
@@ -386,6 +398,7 @@ struct EnhancedSplitExpenseView: View {
                         .font(.caption)
                 }
                 .frame(maxWidth: .infinity)
+                .frame(height: 60)
                 .padding()
                 .background(Color.purple)
                 .foregroundColor(.white)
@@ -404,7 +417,8 @@ struct EnhancedSplitExpenseView: View {
     }
     
     private func addParticipant() {
-        participants.append(SplitParticipant(name: "Person \(participants.count + 1)", amount: 0, percentage: 0, weight: 1.0))
+        let participantName = "Person \(participants.count + 1)"
+        participants.append(SplitParticipant(name: participantName, amount: 0, percentage: 0, weight: 1.0))
         recalculateSplit()
     }
     
@@ -417,20 +431,23 @@ struct EnhancedSplitExpenseView: View {
     private func deleteParticipant(_ participant: SplitParticipant) {
         participants.removeAll { $0.id == participant.id }
         selectedParticipants.remove(participant.id)
+        recalculateSplit()
     }
     
     private func recalculateSplit() {
-        guard !participants.isEmpty else { return }
+        guard !participants.isEmpty && expense.totalCost > 0 else { return }
         
         switch splitMethod {
         case .evenSplit:
             let amountPerPerson = expense.totalCost / Double(participants.count)
+            let percentagePerPerson = 100.0 / Double(participants.count)
             for i in participants.indices {
                 participants[i].amount = amountPerPerson
-                participants[i].percentage = 100.0 / Double(participants.count)
+                participants[i].percentage = percentagePerPerson
             }
             
         case .customSplit:
+            // Don't automatically recalculate for custom split - let user input amounts
             break
             
         case .percentageSplit:
@@ -448,8 +465,9 @@ struct EnhancedSplitExpenseView: View {
             let totalWeight = participants.reduce(0) { $0 + $1.weight }
             if totalWeight > 0 {
                 for i in participants.indices {
-                    participants[i].amount = expense.totalCost * (participants[i].weight / totalWeight)
-                    participants[i].percentage = (participants[i].weight / totalWeight) * 100
+                    let weightRatio = participants[i].weight / totalWeight
+                    participants[i].amount = expense.totalCost * weightRatio
+                    participants[i].percentage = weightRatio * 100
                 }
             }
         }
@@ -564,6 +582,22 @@ struct EnhancedSplitExpenseView: View {
     private func generatePaymentInstructions() -> String {
         return "Please send payment to \(expense.payerName) when convenient."
     }
+    
+    private func autoAdjustSplit() {
+        // For custom splits, automatically adjust to match the total
+        let totalSplit = participants.reduce(0) { $0 + $1.amount }
+        let difference = expense.totalCost - totalSplit
+        
+        guard !participants.isEmpty && abs(difference) > 0.01 else { return }
+        
+        // Adjust the first participant's amount to make the total correct
+        participants[0].amount += difference
+        
+        // If using percentage split, update percentage accordingly
+        if splitMethod == .percentageSplit {
+            participants[0].percentage = (participants[0].amount / expense.totalCost) * 100
+        }
+    }
 }
 
 struct SplitParticipant: Identifiable {
@@ -588,8 +622,10 @@ struct ParticipantRow: View {
             HStack {
                 TextField("Name", text: $participant.name)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .onChange(of: participant.name) { _, _ in
-                        onUpdate(participant)
+                    .onChange(of: participant.name) { _, newValue in
+                        if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            onUpdate(participant)
+                        }
                     }
                 
                 Button(action: onDelete) {

@@ -37,12 +37,10 @@ struct ExpenseListView: View {
                             }
                             
                             Button(action: addSampleData) {
-                                Label("Add Sample Data", systemImage: "wand.and.stars")
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.orange)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(12)
+                                Text("Try with Sample Data")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                                    .padding(.top, 8)
                             }
                         }
                         .padding(.horizontal, 40)
