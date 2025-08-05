@@ -340,7 +340,7 @@ struct AddExpenseView: View {
                         errorMessage = "No items found in the receipt. This is normal for receipts without clear item details. You can add items manually."
                         showingError = true
                     } else {
-                        parsedItems = items.map { (name: $0.name, price: $0.price) }
+                        parsedItems = items
                     }
                     showingParsedItems = true
                     isProcessing = false
@@ -415,11 +415,15 @@ struct EditableItemRow: View {
     let onUpdate: ((name: String, price: Double)) -> Void
     let onDelete: () -> Void
     @State private var isEditing = false
+    @State private var priceText = ""
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
     
     init(item: (name: String, price: Double), onUpdate: @escaping ((name: String, price: Double)) -> Void, onDelete: @escaping () -> Void) {
         self._item = State(initialValue: item)
         self.onUpdate = onUpdate
         self.onDelete = onDelete
+        self._priceText = State(initialValue: String(format: "%.2f", item.price))
     }
     
     var body: some View {
@@ -429,16 +433,40 @@ struct EditableItemRow: View {
                     TextField("Item name", text: $item.name)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                     
-                    TextField("Price", value: $item.price, format: .currency(code: "USD"))
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .keyboardType(.decimalPad)
+                    HStack {
+                        Text("$")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("0.00", text: $priceText)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .keyboardType(.decimalPad)
+                            .onChange(of: priceText) { _, newValue in
+                                // Remove any existing dollar signs and format
+                                let cleanValue = newValue.replacingOccurrences(of: "$", with: "")
+                                    .replacingOccurrences(of: ",", with: "")
+                                priceText = cleanValue
+                            }
+                            .onSubmit {
+                                validateAndSave()
+                            }
+                    }
                 }
                 
-                Button("Done") {
-                    onUpdate(item)
-                    isEditing = false
+                VStack(spacing: 4) {
+                    Button("Save") {
+                        validateAndSave()
+                    }
+                    .foregroundColor(.green)
+                    .font(.caption)
+                    
+                    Button("Cancel") {
+                        priceText = String(format: "%.2f", item.price)
+                        isEditing = false
+                    }
+                    .foregroundColor(.red)
+                    .font(.caption)
                 }
-                .foregroundColor(.blue)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name)
@@ -451,6 +479,7 @@ struct EditableItemRow: View {
                 Spacer()
                 
                 Button("Edit") {
+                    priceText = String(format: "%.2f", item.price)
                     isEditing = true
                 }
                 .foregroundColor(.blue)
@@ -465,6 +494,33 @@ struct EditableItemRow: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(8)
+        .alert("Invalid Price", isPresented: $showingAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+    
+    private func validateAndSave() {
+        // Clear any whitespace and validate
+        let cleanText = priceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if cleanText.isEmpty {
+            alertMessage = "Please enter a price"
+            showingAlert = true
+            return
+        }
+        
+        guard let price = Double(cleanText), price >= 0 else {
+            alertMessage = "Please enter a valid positive number"
+            showingAlert = true
+            return
+        }
+        
+        // Update the item with validated price
+        item.price = price
+        onUpdate(item)
+        isEditing = false
     }
 }
 

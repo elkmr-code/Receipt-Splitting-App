@@ -4,13 +4,20 @@ struct ParsedItem {
     let name: String
     let price: Double
     let quantity: Int
+    
+    init(name: String, price: Double, quantity: Int = 1) {
+        self.name = name
+        self.price = price
+        self.quantity = quantity
+    }
 }
 
 class ReceiptParser {
     
-    // Add the method that AddReceiptView expects
-    func parseItems(from text: String) -> [ParsedItem] {
-        return ReceiptParser.parseReceiptText(text)
+    // Method that returns tuples for compatibility with AddReceiptView
+    func parseItems(from text: String) -> [(name: String, price: Double)] {
+        let parsedItems = ReceiptParser.parseReceiptText(text)
+        return parsedItems.map { (name: $0.name, price: $0.price) }
     }
     
     static func parseReceiptText(_ text: String) -> [ParsedItem] {
@@ -167,11 +174,5 @@ class ReceiptParser {
         }
         
         return nil
-    }
-    
-    // Legacy compatibility method
-    static func parse(rawText: String) -> [(name: String, price: Double)] {
-        let parsedItems = parseReceiptText(rawText)
-        return parsedItems.map { (name: $0.name, price: $0.price) }
     }
 }

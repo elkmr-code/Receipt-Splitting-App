@@ -236,7 +236,7 @@ struct ExpenseDetailView: View {
             EditExpenseView(expense: expense)
         }
         .sheet(isPresented: $showingSplitView) {
-            SplitExpenseView(expense: expense)
+            EnhancedSplitExpenseView(expense: expense)
         }
     }
     
