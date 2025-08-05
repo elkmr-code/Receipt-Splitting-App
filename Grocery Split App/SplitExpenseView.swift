@@ -227,24 +227,29 @@ struct EnhancedSplitExpenseView: View {
     }
     
     private func participantPreviewRow(_ participant: SplitParticipant) -> some View {
-        HStack {
+        let isValidParticipant = !participant.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        
+        return HStack {
             Text(participant.name)
                 .font(.body)
+                .foregroundColor(isValidParticipant ? .primary : .secondary)
             Spacer()
             Text("$\(participant.amount, specifier: "%.2f")")
                 .font(.body)
                 .fontWeight(.semibold)
-                .foregroundColor(.green)
+                .foregroundColor(isValidParticipant ? .green : .gray)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color(.systemGray6))
         .cornerRadius(8)
+        .opacity(isValidParticipant ? 1.0 : 0.6)
     }
     
     private var splitValidationView: some View {
         Group {
-            let totalSplit = participants.reduce(0) { $0 + $1.amount }
+            let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let totalSplit = validParticipants.reduce(0) { $0 + $1.amount }
             let difference = expense.totalCost - totalSplit
             
             if abs(difference) > 0.01 {
@@ -418,6 +423,7 @@ struct EnhancedSplitExpenseView: View {
     
     private func addParticipant() {
         let participantName = "Person \(participants.count + 1)"
+        // Don't add empty participants - ensure they have a valid name and amount
         participants.append(SplitParticipant(name: participantName, amount: 0, percentage: 0, weight: 1.0))
         recalculateSplit()
     }
@@ -425,6 +431,10 @@ struct EnhancedSplitExpenseView: View {
     private func updateParticipant(_ updatedParticipant: SplitParticipant) {
         if let index = participants.firstIndex(where: { $0.id == updatedParticipant.id }) {
             participants[index] = updatedParticipant
+            // Recalculate when participant data changes to maintain consistency
+            if splitMethod == .evenSplit || splitMethod == .byWeight {
+                recalculateSplit()
+            }
         }
     }
     
@@ -437,13 +447,23 @@ struct EnhancedSplitExpenseView: View {
     private func recalculateSplit() {
         guard !participants.isEmpty && expense.totalCost > 0 else { return }
         
+        // Filter out participants with invalid names (empty or just whitespace)
+        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        
+        guard !validParticipants.isEmpty else { return }
+        
         switch splitMethod {
         case .evenSplit:
-            let amountPerPerson = expense.totalCost / Double(participants.count)
-            let percentagePerPerson = 100.0 / Double(participants.count)
+            let amountPerPerson = expense.totalCost / Double(validParticipants.count)
+            let percentagePerPerson = 100.0 / Double(validParticipants.count)
             for i in participants.indices {
-                participants[i].amount = amountPerPerson
-                participants[i].percentage = percentagePerPerson
+                if !participants[i].name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    participants[i].amount = amountPerPerson
+                    participants[i].percentage = percentagePerPerson
+                } else {
+                    participants[i].amount = 0.0
+                    participants[i].percentage = 0.0
+                }
             }
             
         case .customSplit:
@@ -474,10 +494,18 @@ struct EnhancedSplitExpenseView: View {
     }
     
     private func recalculateEvenSplit() {
-        let amountPerPerson = expense.totalCost / Double(participants.count)
+        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !validParticipants.isEmpty else { return }
+        
+        let amountPerPerson = expense.totalCost / Double(validParticipants.count)
         for i in participants.indices {
-            participants[i].amount = amountPerPerson
-            participants[i].percentage = 100.0 / Double(participants.count)
+            if !participants[i].name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                participants[i].amount = amountPerPerson
+                participants[i].percentage = 100.0 / Double(validParticipants.count)
+            } else {
+                participants[i].amount = 0.0
+                participants[i].percentage = 0.0
+            }
         }
     }
     
@@ -623,7 +651,9 @@ struct ParticipantRow: View {
                 TextField("Name", text: $participant.name)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .onChange(of: participant.name) { _, newValue in
-                        if !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        let trimmedName = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmedName.isEmpty {
+                            participant.name = trimmedName
                             onUpdate(participant)
                         }
                     }
