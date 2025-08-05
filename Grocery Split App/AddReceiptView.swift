@@ -19,6 +19,7 @@ struct AddExpenseView: View {
     @State private var showingManualEntry = false
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var showingOCRTutorial = true
     
     var body: some View {
         NavigationStack {
@@ -29,6 +30,28 @@ struct AddExpenseView: View {
                         Text("How would you like to add this expense?")
                             .font(.headline)
                             .multilineTextAlignment(.center)
+                        
+                        // OCR Tutorial Tip
+                        if showingOCRTutorial {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("💡 Tip: Scan receipts for automatic item detection")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                    Text("Works best with clear, well-lit photos of itemized receipts")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Button(action: { showingOCRTutorial = false }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            .padding()
+                            .background(Color.blue.opacity(0.1))
+                            .cornerRadius(8)
+                        }
                         
                         HStack(spacing: 12) {
                             Button(action: { showingManualEntry = true }) {
@@ -347,7 +370,7 @@ struct AddExpenseView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = "Error processing receipt: \\(error.localizedDescription)"
+                    errorMessage = "Error processing receipt: \(error.localizedDescription)"
                     showingError = true
                     isProcessing = false
                     showingParsedItems = true
