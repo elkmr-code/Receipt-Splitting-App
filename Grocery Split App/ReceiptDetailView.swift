@@ -112,13 +112,18 @@ struct ExpenseDetailView: View {
                         
                         if !expense.items.isEmpty {
                             Button(action: { showingSplitView = true }) {
-                                Label("Split Bill", systemImage: "person.3.fill")
-                                    .font(.subheadline)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color.blue)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(8)
+                                HStack(spacing: 4) {
+                                    Image(systemName: "person.3.fill")
+                                        .font(.subheadline)
+                                    Text("Split Bill")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(8)
                             }
                         }
                     }
@@ -214,7 +219,7 @@ struct ExpenseDetailView: View {
                         if !expense.items.isEmpty {
                             Button(action: { showingSplitView = true }) {
                                 VStack(spacing: 8) {
-                                    Image(systemName: "person.3.circle.fill")
+                                    Image(systemName: "divide.circle.fill")
                                         .font(.system(size: 30))
                                     Text("Split")
                                         .font(.caption)

@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import SwiftData
+import UIKit
 
 struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
@@ -19,7 +20,9 @@ struct AddExpenseView: View {
     @State private var showingManualEntry = false
     @State private var showingError = false
     @State private var errorMessage = ""
-    @State private var showingOCRTutorial = true
+    @State private var showingOCRTutorial = !UserDefaults.standard.bool(forKey: "hasSeenOCRTutorial")
+    @State private var showingImagePicker = false
+    @State private var showingCameraOptions = false
     
     var body: some View {
         NavigationStack {
@@ -35,22 +38,66 @@ struct AddExpenseView: View {
                         if showingOCRTutorial {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("💡 Tip: Scan receipts for automatic item detection")
+                                    HStack {
+                                        Text("💡")
+                                            .font(.title2)
+                                        Text("Quick Tip: OCR Scanning")
+                                            .font(.caption)
+                                            .fontWeight(.bold)
+                                    }
+                                    Text("Scan receipts with your camera for automatic item detection!")
                                         .font(.caption)
                                         .fontWeight(.medium)
-                                    Text("Works best with clear, well-lit photos of itemized receipts")
+                                    Text("📸 Works best with clear, well-lit photos of itemized receipts")
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
+                                    
+                                    HStack(spacing: 12) {
+                                        Button(action: { 
+                                            showingOCRTutorial = false
+                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                            showingCameraOptions = true 
+                                        }) {
+                                            Text("Try It Now")
+                                                .font(.caption)
+                                                .fontWeight(.medium)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 4)
+                                                .background(Color.blue)
+                                                .foregroundColor(.white)
+                                                .cornerRadius(4)
+                                        }
+                                        
+                                        Button(action: { 
+                                            showingOCRTutorial = false 
+                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                        }) {
+                                            Text("Maybe Later")
+                                                .font(.caption)
+                                                .foregroundColor(.blue)
+                                        }
+                                    }
+                                    .padding(.top, 4)
                                 }
+                                
                                 Spacer()
+                                
                                 Button(action: { showingOCRTutorial = false }) {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundColor(.gray)
+                                        .font(.title3)
+                                        .onTapGesture {
+                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                        }
                                 }
                             }
                             .padding()
                             .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                            )
                         }
                         
                         HStack(spacing: 12) {
@@ -69,9 +116,9 @@ struct AddExpenseView: View {
                                 .cornerRadius(12)
                             }
                             
-                            PhotosPicker(selection: $selectedItem, matching: .images) {
+                            Button(action: { showingCameraOptions = true }) {
                                 VStack(spacing: 8) {
-                                    Image(systemName: "camera")
+                                    Image(systemName: "camera.fill")
                                         .font(.system(size: 30))
                                     Text("Scan Receipt")
                                         .font(.caption)
@@ -337,10 +384,24 @@ struct AddExpenseView: View {
         } message: {
             Text(errorMessage)
         }
+        .confirmationDialog("Select Image Source", isPresented: $showingCameraOptions, titleVisibility: .visible) {
+            Button("Camera") {
+                showingImagePicker = true
+            }
+            
+            PhotosPicker(selection: $selectedItem, matching: .images) {
+                Text("Photo Library")
+            }
+            
+            Button("Cancel", role: .cancel) { }
+        }
+        .sheet(isPresented: $showingImagePicker) {
+            ImagePicker(selectedImage: $selectedImage, showingManualEntry: $showingManualEntry)
+        }
     }
     
     private func addNewItem() {
-        parsedItems.append((name: "New Item", price: 0.0))
+        parsedItems.append((name: "", price: 0.0))
     }
     
     private func processImage() {
@@ -433,20 +494,68 @@ struct AddExpenseView: View {
     }
 }
 
+struct ImagePicker: UIViewControllerRepresentable {
+    @Binding var selectedImage: UIImage?
+    @Binding var showingManualEntry: Bool
+    @Environment(\.dismiss) private var dismiss
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.sourceType = .camera
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: ImagePicker
+        
+        init(_ parent: ImagePicker) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.selectedImage = image
+                parent.showingManualEntry = false
+            }
+            parent.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
+    }
+}
+
 struct EditableItemRow: View {
     @State private var item: (name: String, price: Double)
     let onUpdate: ((name: String, price: Double)) -> Void
     let onDelete: () -> Void
-    @State private var isEditing = false
+    @State private var isEditing = true // Start in editing mode for new items
     @State private var priceText = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @State private var isNewItem = true
     
     init(item: (name: String, price: Double), onUpdate: @escaping ((name: String, price: Double)) -> Void, onDelete: @escaping () -> Void) {
         self._item = State(initialValue: item)
         self.onUpdate = onUpdate
         self.onDelete = onDelete
-        self._priceText = State(initialValue: String(format: "%.2f", item.price))
+        // Start with blank price for new items, formatted price for existing items
+        if item.name.isEmpty && item.price == 0.0 {
+            self._priceText = State(initialValue: "")
+            self._isNewItem = State(initialValue: true)
+        } else {
+            self._priceText = State(initialValue: String(format: "%.2f", item.price))
+            self._isNewItem = State(initialValue: false)
+            self._isEditing = State(initialValue: false)
+        }
     }
     
     var body: some View {
@@ -455,6 +564,11 @@ struct EditableItemRow: View {
                 VStack(spacing: 8) {
                     TextField("Item name", text: $item.name)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .onSubmit {
+                            if !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                isNewItem = false
+                            }
+                        }
                     
                     HStack {
                         Text("$")
@@ -464,11 +578,22 @@ struct EditableItemRow: View {
                         TextField("0.00", text: $priceText)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .keyboardType(.decimalPad)
+                            .onTapGesture {
+                                // Clear the field when user first taps if it's a new item
+                                if isNewItem && priceText == "0.00" {
+                                    priceText = ""
+                                }
+                            }
                             .onChange(of: priceText) { _, newValue in
                                 // Remove any existing dollar signs and format
                                 let cleanValue = newValue.replacingOccurrences(of: "$", with: "")
                                     .replacingOccurrences(of: ",", with: "")
                                 priceText = cleanValue
+                                
+                                // Mark as no longer new item once user starts typing
+                                if !cleanValue.isEmpty {
+                                    isNewItem = false
+                                }
                             }
                             .onSubmit {
                                 validateAndSave()
@@ -484,8 +609,12 @@ struct EditableItemRow: View {
                     .font(.caption)
                     
                     Button("Cancel") {
-                        priceText = String(format: "%.2f", item.price)
-                        isEditing = false
+                        if isNewItem {
+                            onDelete() // Delete if it's a new item and user cancels
+                        } else {
+                            priceText = String(format: "%.2f", item.price)
+                            isEditing = false
+                        }
                     }
                     .foregroundColor(.red)
                     .font(.caption)
@@ -525,7 +654,15 @@ struct EditableItemRow: View {
     }
     
     private func validateAndSave() {
-        // Clear any whitespace and validate
+        // Validate item name
+        let cleanName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanName.isEmpty {
+            alertMessage = "Please enter an item name"
+            showingAlert = true
+            return
+        }
+        
+        // Clear any whitespace and validate price
         let cleanText = priceText.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if cleanText.isEmpty {
@@ -540,8 +677,10 @@ struct EditableItemRow: View {
             return
         }
         
-        // Update the item with validated price
+        // Update the item with validated data
+        item.name = cleanName
         item.price = price
+        isNewItem = false
         onUpdate(item)
         isEditing = false
     }

@@ -87,5 +87,51 @@ struct Grocery_Split_AppTests {
         let total = SplittingService.calculateTotalOwed(for: people)
         #expect(total == 30.0)
     }
+    
+    @Test func testReceiptParserWithValidText() async throws {
+        let sampleReceiptText = """
+        GROCERY STORE
+        123 Main St
+        
+        Organic Bananas     $3.99
+        Whole Milk          $4.25
+        Bread               $2.50
+        
+        Total:             $10.74
+        """
+        
+        let parser = ReceiptParser()
+        let items = parser.parseItems(from: sampleReceiptText)
+        
+        #expect(items.count == 3)
+        #expect(items[0].name == "Organic Bananas")
+        #expect(items[0].price == 3.99)
+        #expect(items[1].name == "Whole Milk")
+        #expect(items[1].price == 4.25)
+        #expect(items[2].name == "Bread")
+        #expect(items[2].price == 2.50)
+    }
+    
+    @Test func testReceiptParserWithEmptyText() async throws {
+        let parser = ReceiptParser()
+        let items = parser.parseItems(from: "")
+        
+        #expect(items.isEmpty)
+    }
+    
+    @Test func testReceiptParserSkipsInvalidLines() async throws {
+        let invalidReceiptText = """
+        STORE NAME
+        Total: $15.99
+        Tax: $1.20
+        Thank you for shopping!
+        """
+        
+        let parser = ReceiptParser()
+        let items = parser.parseItems(from: invalidReceiptText)
+        
+        // Should skip all these lines as they don't contain valid items
+        #expect(items.isEmpty)
+    }
 
 }
