@@ -20,7 +20,7 @@ struct AddExpenseView: View {
     @State private var showingManualEntry = false
     @State private var showingError = false
     @State private var errorMessage = ""
-    @State private var showingOCRTutorial = true
+    @State private var showingOCRTutorial = !UserDefaults.standard.bool(forKey: "hasSeenOCRTutorial")
     @State private var showingImagePicker = false
     @State private var showingCameraOptions = false
     
@@ -55,6 +55,7 @@ struct AddExpenseView: View {
                                     HStack(spacing: 12) {
                                         Button(action: { 
                                             showingOCRTutorial = false
+                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
                                             showingCameraOptions = true 
                                         }) {
                                             Text("Try It Now")
@@ -67,7 +68,10 @@ struct AddExpenseView: View {
                                                 .cornerRadius(4)
                                         }
                                         
-                                        Button(action: { showingOCRTutorial = false }) {
+                                        Button(action: { 
+                                            showingOCRTutorial = false 
+                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                        }) {
                                             Text("Maybe Later")
                                                 .font(.caption)
                                                 .foregroundColor(.blue)
@@ -82,6 +86,9 @@ struct AddExpenseView: View {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundColor(.gray)
                                         .font(.title3)
+                                        .onTapGesture {
+                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                        }
                                 }
                             }
                             .padding()

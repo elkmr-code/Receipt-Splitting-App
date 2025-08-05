@@ -216,13 +216,30 @@ struct EnhancedSplitExpenseView: View {
             Text("Split Preview")
                 .font(.headline)
             
-            LazyVStack(spacing: 4) {
-                ForEach(participants) { participant in
-                    participantPreviewRow(participant)
-                }
-            }
+            let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             
-            splitValidationView
+            if validParticipants.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "person.3.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(.gray)
+                    Text("Add participants to see split preview")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
+            } else {
+                LazyVStack(spacing: 4) {
+                    ForEach(validParticipants) { participant in
+                        participantPreviewRow(participant)
+                    }
+                }
+                
+                splitValidationView
+            }
         }
     }
     
@@ -381,7 +398,7 @@ struct EnhancedSplitExpenseView: View {
             
             Button(action: shareAsGroup) {
                 VStack(spacing: 4) {
-                    Image(systemName: "person.3.circle")
+                    Image(systemName: "person.3.circle.fill")
                         .font(.title2)
                     Text("Group")
                         .font(.caption)
