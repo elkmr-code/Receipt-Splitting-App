@@ -252,8 +252,10 @@ struct CameraScannerView: View {
             // Call completion handler first
             onComplete(result)
             
-            // Then dismiss immediately
-            dismiss()
+            // Then dismiss after a small delay to allow parent view to process
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                dismiss()
+            }
         }
     }
     

@@ -191,13 +191,13 @@ struct EnhancedSplitExpenseView: View {
                 // First Row: Even Split
                 splitMethodButton(for: .evenSplit)
                 
-                // Second Row: Percentage and Item-Based
-                HStack(spacing: 8) {
-                    splitMethodButton(for: .percentageSplit)
-                    splitMethodButton(for: .itemBased)
-                }
+                // Second Row: Percentage Split
+                splitMethodButton(for: .percentageSplit)
                 
-                // Third Row: Custom Split
+                // Third Row: Item-Based Split
+                splitMethodButton(for: .itemBased)
+                
+                // Fourth Row: Custom Split
                 splitMethodButton(for: .customSplit)
             }
         }
@@ -415,28 +415,13 @@ struct EnhancedSplitExpenseView: View {
                 VStack(spacing: 4) {
                     Image(systemName: "person.circle")
                         .font(.title2)
-                    Text("Individual")
+                    Text("Send")
                         .font(.caption)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 60)
                 .padding()
                 .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(10)
-            }
-            
-            Button(action: shareAsGroup) {
-                VStack(spacing: 4) {
-                    Image(systemName: "person.3.circle.fill")
-                        .font(.title2)
-                    Text("Group")
-                        .font(.caption)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 60)
-                .padding()
-                .background(Color.blue)
                 .foregroundColor(.white)
                 .cornerRadius(10)
             }

@@ -157,6 +157,7 @@ struct ItemSelectionView: View {
                 }
             }
         }
+        .background(Color(.systemBackground))
     }
 }
 
@@ -270,6 +271,8 @@ struct ScanningResultsView: View {
             Spacer()
         }
         .padding()
+        .background(Color(.systemBackground))
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 }
 

@@ -249,7 +249,8 @@ class ScanningService: ObservableObject {
 // MARK: - Data Models
 // Note: Using ParsedItem from ReceiptParser.swift
 
-struct ScanResult {
+struct ScanResult: Identifiable {
+    var id: String { sourceId }
     let type: ScanType
     let sourceId: String
     let items: [ParsedItem]
