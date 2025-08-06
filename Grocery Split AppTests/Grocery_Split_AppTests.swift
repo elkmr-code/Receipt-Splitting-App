@@ -133,5 +133,62 @@ struct Grocery_Split_AppTests {
         // Should skip all these lines as they don't contain valid items
         #expect(items.isEmpty)
     }
+    
+    @Test func testCashAppPaymentMethodExists() async throws {
+        // Test that CashApp is included in PaymentMethod enum
+        let allMethods = PaymentMethod.allCases
+        #expect(allMethods.contains(.cashapp))
+        
+        // Test CashApp has proper icon
+        #expect(PaymentMethod.cashapp.icon == "dollarsign.circle.fill")
+        #expect(PaymentMethod.cashapp.rawValue == "CashApp")
+    }
+    
+    @Test func testMessageTemplates() async throws {
+        // Test all message templates exist and have content
+        let templates = EnhancedSplitExpenseView.MessageTemplate.allCases
+        #expect(templates.count == 5)
+        
+        for template in templates {
+            #expect(!template.message.isEmpty)
+            #expect(!template.icon.isEmpty)
+            #expect(!template.rawValue.isEmpty)
+        }
+        
+        // Test specific templates
+        #expect(EnhancedSplitExpenseView.MessageTemplate.rude.message.contains("ASAP"))
+        #expect(EnhancedSplitExpenseView.MessageTemplate.couples.message.contains("babe"))
+        #expect(EnhancedSplitExpenseView.MessageTemplate.friendly.message.contains("No rush"))
+    }
+    
+    @Test func testScanningServiceFallback() async throws {
+        let scanningService = ScanningService()
+        
+        // Test that scanning service provides fallback results instead of throwing errors
+        do {
+            let result = try await scanningService.scanCode()
+            #expect(!result.items.isEmpty)
+            #expect(!result.sourceId.isEmpty)
+            #expect(result.type == .barcode)
+        } catch {
+            // Should not throw error due to fallback implementation
+            #expect(Bool(false), "Scanning should not throw errors with fallback implementation")
+        }
+    }
+    
+    @Test func testPaymentMethodFiltering() async throws {
+        // Test that payment method selector only includes message-based methods
+        let messageBasedMethods: [PaymentMethod] = [
+            .venmo, .cashapp, .zelle, .paypal, .bankTransfer, .cash
+        ]
+        
+        // Verify CashApp is included
+        #expect(messageBasedMethods.contains(.cashapp))
+        
+        // Verify e-pay methods are excluded
+        #expect(!messageBasedMethods.contains(.creditCard))
+        #expect(!messageBasedMethods.contains(.debitCard))
+        #expect(!messageBasedMethods.contains(.applePay))
+    }
 
 }

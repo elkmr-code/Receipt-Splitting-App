@@ -13,6 +13,12 @@ struct EnhancedSplitExpenseView: View {
     @State private var selectedParticipants: Set<UUID> = []
     @State private var customSplitAmounts: [UUID: Double] = [:]
     @State private var shareMessage = "Hey! Here's your share from our recent expense. No rush, but would love to settle this when you get a chance! 😊"
+    @State private var selectedMessageTemplate: MessageTemplate = .friendly
+    @State private var showingMessageTemplates = false
+    @State private var showingPaymentMethodSelector = false
+    @State private var selectedPaymentMethodForSharing: PaymentMethod = .venmo
+    @State private var showingFinalMessage = false
+    @State private var finalShareMessage = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var itemAssignments: [UUID: Set<UUID>] = [:] // participantId -> Set of itemIds
@@ -39,6 +45,39 @@ struct EnhancedSplitExpenseView: View {
             case .customSplit: return "Set custom amounts for each person"
             case .percentageSplit: return "Split by percentage contribution"
             case .itemBased: return "Assign specific items to people"
+            }
+        }
+    }
+    
+    enum MessageTemplate: String, CaseIterable {
+        case friendly = "Friendly"
+        case couples = "Sweet for Couples"
+        case rude = "Direct for Friends"
+        case professional = "Professional"
+        case casual = "Casual"
+        
+        var message: String {
+            switch self {
+            case .friendly:
+                return "Hey! Here's your share from our recent expense. No rush, but would love to settle this when you get a chance! 😊"
+            case .couples:
+                return "Little reminder babe, here's your share from our expense. Love you! 💕"
+            case .rude:
+                return "Send me money ASAP, come on... You owe me for this expense! 💸"
+            case .professional:
+                return "This is a payment request for your portion of our shared expense. Please process at your earliest convenience."
+            case .casual:
+                return "Hey, just splitting the bill! Here's what you owe. Thanks! 👍"
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .friendly: return "heart"
+            case .couples: return "heart.fill"
+            case .rude: return "exclamationmark.triangle"
+            case .professional: return "briefcase"
+            case .casual: return "hand.thumbsup"
             }
         }
     }
@@ -97,6 +136,31 @@ struct EnhancedSplitExpenseView: View {
                 onComplete: {
                     calculateItemBasedSplit()
                     showingItemAssignment = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingPaymentMethodSelector) {
+            PaymentMethodSelectorView(
+                selectedMethod: $selectedPaymentMethodForSharing,
+                onConfirm: {
+                    showingPaymentMethodSelector = false
+                    shareWithSelectedPaymentMethod()
+                },
+                onCancel: {
+                    showingPaymentMethodSelector = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingFinalMessage) {
+            FinalMessageView(
+                message: finalShareMessage,
+                onSend: {
+                    showingFinalMessage = false
+                    // Actually send the message here
+                },
+                onEdit: {
+                    showingFinalMessage = false
+                    // Go back to edit
                 }
             )
         }
@@ -239,9 +303,6 @@ struct EnhancedSplitExpenseView: View {
     private var splitPreviewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "person.3.circle.fill")
-                    .font(.title3)
-                    .foregroundColor(.blue)
                 Text("Split Preview")
                     .font(.headline)
                 Spacer()
@@ -337,14 +398,64 @@ struct EnhancedSplitExpenseView: View {
     }
     
     private var messageCustomizationView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Custom message:")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             
-            TextField("Add a friendly message...", text: $shareMessage, axis: .vertical)
+            // Message Template Selector
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Choose template:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Menu {
+                    ForEach(MessageTemplate.allCases, id: \.self) { template in
+                        Button(action: {
+                            selectedMessageTemplate = template
+                            shareMessage = template.message
+                        }) {
+                            HStack {
+                                Image(systemName: template.icon)
+                                Text(template.rawValue)
+                                if selectedMessageTemplate == template {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: selectedMessageTemplate.icon)
+                            .foregroundColor(.blue)
+                        Text(selectedMessageTemplate.rawValue)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                }
+            }
+            
+            TextField("Add a custom message...", text: $shareMessage, axis: .vertical)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .lineLimit(2...4)
+            
+            // Reminder text
+            HStack {
+                Image(systemName: "info.circle")
+                    .foregroundColor(.orange)
+                    .font(.caption)
+                Text("Check your message before sending")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.top, 4)
         }
     }
     
@@ -415,7 +526,7 @@ struct EnhancedSplitExpenseView: View {
                 VStack(spacing: 4) {
                     Image(systemName: "person.circle")
                         .font(.title2)
-                    Text("Send")
+                    Text("Send Message")
                         .font(.caption)
                 }
                 .frame(maxWidth: .infinity)
@@ -426,11 +537,11 @@ struct EnhancedSplitExpenseView: View {
                 .cornerRadius(10)
             }
             
-            Button(action: shareWithPaymentMethods) {
+            Button(action: { showingPaymentMethodSelector = true }) {
                 VStack(spacing: 4) {
                     Image(systemName: "creditcard.circle")
                         .font(.title2)
-                    Text("With Payment")
+                    Text("With Payment Info")
                         .font(.caption)
                 }
                 .frame(maxWidth: .infinity)
@@ -589,6 +700,19 @@ struct EnhancedSplitExpenseView: View {
         showingShareSheet = true
     }
     
+    private func shareWithSelectedPaymentMethod() {
+        let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
+        
+        if selectedPeople.isEmpty {
+            alertMessage = "Please select at least one participant to share with payment information."
+            showingAlert = true
+            return
+        }
+        
+        finalShareMessage = generatePaymentShareContentWithMethod(for: selectedPeople, paymentMethod: selectedPaymentMethodForSharing)
+        showingFinalMessage = true
+    }
+    
     private func generateIndividualShareContent(for participant: SplitParticipant) -> String {
         return """
         \(shareMessage)
@@ -642,12 +766,53 @@ struct EnhancedSplitExpenseView: View {
         
         Payment methods accepted:
         💳 Venmo: @\(expense.payerName.lowercased())
+        💰 CashApp: $\(expense.payerName.lowercased())
         💰 Zelle: \(expense.payerName)@email.com
-        🍎 Apple Pay: Available
+        🏦 PayPal: \(expense.payerName.lowercased())@email.com
+        🏛️ Bank Transfer: Available upon request
         💵 Cash: Always welcome!
         
         No rush, but would appreciate settling when convenient! 😊
         """
+    }
+    
+    private func generatePaymentShareContentWithMethod(for selectedPeople: [SplitParticipant], paymentMethod: PaymentMethod) -> String {
+        let participantsList = selectedPeople.map { "• \($0.name): $\(String(format: "%.2f", $0.amount))" }.joined(separator: "\n")
+        
+        let paymentInfo = generatePaymentInfo(for: paymentMethod)
+        
+        return """
+        \(shareMessage)
+        
+        💰 Expense: \(expense.name)
+        📅 Date: \(expense.date.formatted(date: .abbreviated, time: .omitted))
+        
+        Amount(s) owed:
+        \(participantsList)
+        
+        \(paymentInfo)
+        
+        No rush, but would appreciate settling when convenient! 😊
+        """
+    }
+    
+    private func generatePaymentInfo(for method: PaymentMethod) -> String {
+        switch method {
+        case .venmo:
+            return "Payment via Venmo: @\(expense.payerName.lowercased())"
+        case .cashapp:
+            return "Payment via CashApp: $\(expense.payerName.lowercased())"
+        case .zelle:
+            return "Payment via Zelle: \(expense.payerName)@email.com"
+        case .paypal:
+            return "Payment via PayPal: \(expense.payerName.lowercased())@email.com"
+        case .bankTransfer:
+            return "Bank transfer details available upon request"
+        case .cash:
+            return "Cash payment preferred - let me know when you can meet up!"
+        default:
+            return "Payment method: \(method.rawValue)"
+        }
     }
     
     private func generatePaymentInstructions() -> String {
@@ -909,4 +1074,160 @@ struct ShareSheet: UIViewControllerRepresentable {
     
     return EnhancedSplitExpenseView(expense: expense)
         .modelContainer(container)
+}
+
+// MARK: - Payment Method Selector View
+struct PaymentMethodSelectorView: View {
+    @Binding var selectedMethod: PaymentMethod
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+    
+    // Only message-based payment methods (excluding e-pay methods like Apple Pay, Credit Card)
+    private let messageBasedMethods: [PaymentMethod] = [
+        .venmo, .cashapp, .zelle, .paypal, .bankTransfer, .cash
+    ]
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text("Choose Payment Method")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .padding()
+                
+                Text("Select how you'd like to receive payment:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                LazyVStack(spacing: 12) {
+                    ForEach(messageBasedMethods, id: \.self) { method in
+                        Button(action: {
+                            selectedMethod = method
+                        }) {
+                            HStack {
+                                Image(systemName: method.icon)
+                                    .font(.title2)
+                                    .foregroundColor(selectedMethod == method ? .white : .blue)
+                                    .frame(width: 30)
+                                
+                                Text(method.rawValue)
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                
+                                Spacer()
+                                
+                                if selectedMethod == method {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .padding()
+                            .background(selectedMethod == method ? Color.blue : Color(.systemGray6))
+                            .foregroundColor(selectedMethod == method ? .white : .primary)
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                
+                Spacer()
+            }
+            .navigationTitle("Payment Method")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        onCancel()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Continue") {
+                        onConfirm()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Final Message View
+struct FinalMessageView: View {
+    let message: String
+    let onSend: () -> Void
+    let onEdit: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                VStack(spacing: 12) {
+                    Image(systemName: "envelope.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundColor(.blue)
+                    
+                    Text("Final Message")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text("Check your message before sending")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Preview:")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        
+                        Text(message)
+                            .font(.body)
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                            )
+                    }
+                    .padding()
+                }
+                
+                VStack(spacing: 12) {
+                    Button(action: onSend) {
+                        HStack {
+                            Image(systemName: "paperplane.fill")
+                            Text("Send Message")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .cornerRadius(12)
+                    }
+                    
+                    Button(action: onEdit) {
+                        Text("Edit Message")
+                            .font(.body)
+                            .foregroundColor(.blue)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Send Payment Request")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
 }
