@@ -187,10 +187,18 @@ struct EnhancedSplitExpenseView: View {
             Text("Split Method")
                 .font(.headline)
             
-            LazyVStack(spacing: 8) {
-                ForEach(SplitMethod.allCases, id: \.self) { method in
-                    splitMethodButton(for: method)
+            VStack(spacing: 8) {
+                // First Row: Even Split
+                splitMethodButton(for: .evenSplit)
+                
+                // Second Row: Percentage and Item-Based
+                HStack(spacing: 8) {
+                    splitMethodButton(for: .percentageSplit)
+                    splitMethodButton(for: .itemBased)
                 }
+                
+                // Third Row: Custom Split
+                splitMethodButton(for: .customSplit)
             }
         }
     }

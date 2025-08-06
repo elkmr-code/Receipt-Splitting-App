@@ -30,6 +30,19 @@ struct AddExpenseView: View {
     @State private var showingDemoResults = false
     @State private var showingBarcodeScanner = false
     @StateObject private var barcodeScannerVM = BarcodeScannerViewModel()
+    @StateObject private var scanningService = ScanningService()
+    @State private var showingItemSelection = false
+    @State private var showingScanResults = false
+    @State private var currentScanResult: ScanResult?
+    @State private var selectedScanItems: Set<UUID> = []
+    @State private var imageForOCR: UIImage?
+    @State private var showingOCRImagePicker = false
+    @State private var showingCodeScanOptions = false
+    @State private var showingReceiptScanOptions = false
+    @State private var showingCodeCamera = false
+    @State private var showingReceiptCamera = false
+    @State private var showingCodeGallery = false
+    @State private var imageForCodeScan: UIImage?
     
     var body: some View {
         NavigationStack {
@@ -116,6 +129,47 @@ struct AddExpenseView: View {
                             )
                         }
                         
+                        // Scanning Row (First Row)
+                        HStack(spacing: 12) {
+                            Button(action: { showingCodeScanOptions = true }) {
+                                VStack(spacing: 8) {
+                                    if scanningService.isScanning {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                            .scaleEffect(0.8)
+                                    } else {
+                                        Image(systemName: "qrcode")
+                                            .font(.system(size: 30))
+                                    }
+                                    Text(scanningService.isScanning ? "Scanning..." : "Scan Code")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(scanningService.isScanning ? Color.gray : Color.purple)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                            .disabled(scanningService.isScanning)
+                            
+                            Button(action: { showingReceiptScanOptions = true }) {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "doc.text.viewfinder")
+                                        .font(.system(size: 30))
+                                    Text("Scan Receipt")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                        }
+                        
+                        // Manual Entry Row (Second Row)
                         HStack(spacing: 12) {
                             Button(action: { showingManualEntry = true }) {
                                 VStack(spacing: 8) {
@@ -128,21 +182,6 @@ struct AddExpenseView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding()
                                 .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                            }
-                            
-                            Button(action: { showingCameraOptions = true }) {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 30))
-                                    Text("Scan Receipt")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
                                 .foregroundColor(.white)
                                 .cornerRadius(12)
                             }
@@ -161,29 +200,6 @@ struct AddExpenseView: View {
                                 .foregroundColor(.white)
                                 .cornerRadius(12)
                             }
-                        }
-                        
-                        // Barcode Scanning Row
-                        HStack(spacing: 12) {
-                            Button(action: { showingBarcodeScanner = true }) {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "barcode.viewfinder")
-                                        .font(.system(size: 30))
-                                    Text("Scan Barcode")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.purple)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                            }
-                            
-                            // Placeholder button to maintain layout
-                            Rectangle()
-                                .fill(Color.clear)
-                                .frame(maxWidth: .infinity)
                         }
                     }
                     
@@ -455,6 +471,93 @@ struct AddExpenseView: View {
                 showingBarcodeScanner = false
             }
         }
+        .sheet(isPresented: $showingOCRImagePicker) {
+            ImagePicker(selectedImage: $imageForOCR, showingManualEntry: .constant(false), sourceType: .photoLibrary)
+        }
+        .sheet(isPresented: $showingScanResults) {
+            if let scanResult = currentScanResult {
+                ScanningResultsView(
+                    scanResult: scanResult,
+                    onAddAll: {
+                        addAllScannedItems(scanResult.items)
+                        showingScanResults = false
+                    },
+                    onChooseItems: {
+                        selectedScanItems = Set(scanResult.items.map { $0.id })
+                        showingItemSelection = true
+                        showingScanResults = false
+                    },
+                    onCancel: {
+                        showingScanResults = false
+                        currentScanResult = nil
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: $showingItemSelection) {
+            if let scanResult = currentScanResult {
+                ItemSelectionView(
+                    scanResult: scanResult,
+                    selectedItems: $selectedScanItems,
+                    onConfirm: { selectedItems in
+                        addAllScannedItems(selectedItems)
+                        showingItemSelection = false
+                        currentScanResult = nil
+                    }
+                )
+            }
+        }
+        .onChange(of: imageForOCR) { _, newImage in
+            if let image = newImage {
+                performOCR(on: image)
+            }
+        }
+        .onChange(of: imageForCodeScan) { _, newImage in
+            if let image = newImage {
+                performCodeScanFromImage(on: image)
+            }
+        }
+        .confirmationDialog("Scan Code Options", isPresented: $showingCodeScanOptions, titleVisibility: .visible) {
+            Button("Use Camera") {
+                showingCodeCamera = true
+            }
+            
+            Button("Choose from Gallery") {
+                showingCodeGallery = true
+            }
+            
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("How would you like to scan the barcode/QR code?")
+        }
+        .confirmationDialog("Scan Receipt Options", isPresented: $showingReceiptScanOptions, titleVisibility: .visible) {
+            Button("Use Camera") {
+                showingReceiptCamera = true
+            }
+            
+            Button("Choose from Gallery") {
+                showingOCRImagePicker = true
+            }
+            
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("How would you like to scan the receipt?")
+        }
+        .sheet(isPresented: $showingCodeCamera) {
+            CameraScannerView(scanType: .barcode) { result in
+                handleCameraScanResult(result)
+                showingCodeCamera = false
+            }
+        }
+        .sheet(isPresented: $showingReceiptCamera) {
+            CameraScannerView(scanType: .receipt) { result in
+                handleCameraScanResult(result)
+                showingReceiptCamera = false
+            }
+        }
+        .sheet(isPresented: $showingCodeGallery) {
+            ImagePicker(selectedImage: $imageForCodeScan, showingManualEntry: .constant(false), sourceType: .photoLibrary)
+        }
     }
     
     private func addNewItem() {
@@ -549,17 +652,91 @@ struct AddExpenseView: View {
         try? modelContext.save()
         dismiss()
     }
+    
+    // MARK: - New Scanning Methods
+    private func scanCode() {
+        Task {
+            do {
+                let result = try await scanningService.scanCode()
+                currentScanResult = result
+                showingScanResults = true
+            } catch {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+    
+    private func performOCR(on image: UIImage) {
+        Task {
+            do {
+                let result = try await scanningService.performOCR(on: image)
+                currentScanResult = result
+                showingScanResults = true
+            } catch {
+                errorMessage = error.localizedDescription
+                showingError = true
+            }
+        }
+    }
+    
+    private func addAllScannedItems(_ items: [ParsedItem]) {
+        let newItems = items.map { ($0.name, $0.price) }
+        parsedItems.append(contentsOf: newItems)
+        showingParsedItems = true
+        currentScanResult = nil
+    }
+    
+    private func performCodeScanFromImage(on image: UIImage) {
+        Task {
+            do {
+                // For barcode images, we'll try OCR first, but with barcode-specific handling
+                let result = try await scanningService.performOCR(on: image)
+                // Update the result type to indicate it came from a barcode scan
+                let barcodeResult = ScanResult(
+                    type: .barcode,
+                    sourceId: result.sourceId,
+                    items: result.items,
+                    originalText: result.originalText
+                )
+                currentScanResult = barcodeResult
+                showingScanResults = true
+            } catch {
+                // Provide specific error message for barcode scanning
+                if let scanError = error as? ScanningError {
+                    switch scanError {
+                    case .invalidImageType:
+                        errorMessage = "Sorry, can't scan this image. This doesn't appear to be a barcode or QR code. Please select an image with a clear barcode."
+                    case .noTextFound:
+                        errorMessage = "Sorry, can't scan this image. No barcode or QR code was detected. Please try a clearer image."
+                    default:
+                        errorMessage = error.localizedDescription
+                    }
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+                showingError = true
+            }
+        }
+    }
+    
+    private func handleCameraScanResult(_ result: ScanResult) {
+        currentScanResult = result
+        showingScanResults = true
+    }
 }
 
 struct ImagePicker: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
     @Binding var showingManualEntry: Bool
+    var sourceType: UIImagePickerController.SourceType = .photoLibrary
     @Environment(\.dismiss) private var dismiss
     
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
         picker.delegate = context.coordinator
-        picker.sourceType = .camera
+        picker.sourceType = sourceType
+        picker.allowsEditing = false
         return picker
     }
     

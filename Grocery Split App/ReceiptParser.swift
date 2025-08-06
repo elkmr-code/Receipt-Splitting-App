@@ -1,6 +1,7 @@
 import Foundation
 
-struct ParsedItem {
+struct ParsedItem: Identifiable, Equatable {
+    let id = UUID()
     let name: String
     let price: Double
     let quantity: Int
@@ -9,6 +10,14 @@ struct ParsedItem {
         self.name = name
         self.price = price
         self.quantity = quantity
+    }
+    
+    var formattedPrice: String {
+        return String(format: "$%.2f", price)
+    }
+    
+    var asTuple: (name: String, price: Double) {
+        return (name: name, price: price)
     }
 }
 
