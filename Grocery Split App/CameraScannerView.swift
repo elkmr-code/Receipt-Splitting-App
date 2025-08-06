@@ -212,19 +212,21 @@ struct CameraScannerView: View {
         isScanning = true
         scanProgress = 0.0
         scanningStep = 0
+        showingResult = false
         
         // Animate scanning line
         withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: true)) {
             animationOffset = 200
         }
         
-        // Simulate scanning process
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { timer in
+        // Simulate scanning process with more reliable progress
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { timer in
             if scanningStep < scanningSteps.count - 1 {
                 scanningStep += 1
                 scanProgress = Double(scanningStep) / Double(scanningSteps.count - 1)
             } else {
                 timer.invalidate()
+                // Always complete successfully
                 completeScanning()
             }
         }
@@ -242,10 +244,13 @@ struct CameraScannerView: View {
             let mockReceiptText = getMockReceipt()
             let items = parseReceiptText(mockReceiptText)
             
+            // Always ensure we have at least one item to prevent blank results
+            let finalItems = items.isEmpty ? [ParsedItem(name: "Sample Item", price: 5.99)] : items
+            
             let result = ScanResult(
                 type: scanType == .barcode ? .barcode : .ocr,
                 sourceId: "Camera_\(Date().timeIntervalSince1970)",
-                items: items.isEmpty ? [ParsedItem(name: "Sample Item", price: 5.99)] : items,
+                items: finalItems,
                 originalText: mockReceiptText
             )
             
