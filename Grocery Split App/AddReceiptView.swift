@@ -23,6 +23,13 @@ struct AddExpenseView: View {
     @State private var showingOCRTutorial = !UserDefaults.standard.bool(forKey: "hasSeenOCRTutorial")
     @State private var showingImagePicker = false
     @State private var showingCameraOptions = false
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
+    @State private var showingOCRDemo = false
+    @State private var demoItems: [(name: String, price: Double)] = []
+    @State private var showingDemoResults = false
+    @State private var showingBarcodeScanner = false
+    @StateObject private var barcodeScannerVM = BarcodeScannerViewModel()
     
     var body: some View {
         NavigationStack {
@@ -36,59 +43,68 @@ struct AddExpenseView: View {
                         
                         // OCR Tutorial Tip
                         if showingOCRTutorial {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text("💡")
-                                            .font(.title2)
-                                        Text("Quick Tip: OCR Scanning")
+                            VStack(spacing: 12) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text("💡")
+                                                .font(.title2)
+                                            Text("Quick Tip: OCR Scanning")
+                                                .font(.caption)
+                                                .fontWeight(.bold)
+                                        }
+                                        Text("Scan receipts with your camera for automatic item detection!")
                                             .font(.caption)
-                                            .fontWeight(.bold)
+                                            .fontWeight(.medium)
+                                        Text("📸 Works best with clear, well-lit photos of itemized receipts")
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
                                     }
-                                    Text("Scan receipts with your camera for automatic item detection!")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                    Text("📸 Works best with clear, well-lit photos of itemized receipts")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
                                     
-                                    HStack(spacing: 12) {
-                                        Button(action: { 
-                                            showingOCRTutorial = false
-                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
-                                            showingCameraOptions = true 
-                                        }) {
-                                            Text("Try It Now")
-                                                .font(.caption)
-                                                .fontWeight(.medium)
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 4)
-                                                .background(Color.blue)
-                                                .foregroundColor(.white)
-                                                .cornerRadius(4)
-                                        }
-                                        
-                                        Button(action: { 
-                                            showingOCRTutorial = false 
-                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
-                                        }) {
-                                            Text("Maybe Later")
-                                                .font(.caption)
-                                                .foregroundColor(.blue)
-                                        }
+                                    Spacer()
+                                    
+                                    Button(action: {
+                                        showingOCRTutorial = false
+                                        UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.gray)
+                                            .font(.title2)
                                     }
-                                    .padding(.top, 4)
                                 }
                                 
-                                Spacer()
-                                
-                                Button(action: { showingOCRTutorial = false }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.gray)
-                                        .font(.title3)
-                                        .onTapGesture {
-                                            UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                HStack(spacing: 12) {
+                                    Button(action: {
+                                        showingOCRDemo = true
+                                        showingOCRTutorial = false
+                                        UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "play.circle.fill")
+                                            Text("Play Demo")
                                         }
+                                        .font(.caption)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Color.blue)
+                                        .foregroundColor(.white)
+                                        .cornerRadius(8)
+                                    }
+                                    
+                                    Button(action: {
+                                        showingOCRTutorial = false
+                                        UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
+                                    }) {
+                                        Text("Maybe Later")
+                                            .font(.caption)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(Color(.systemGray5))
+                                            .foregroundColor(.primary)
+                                            .cornerRadius(8)
+                                    }
+                                    
+                                    Spacer()
                                 }
                             }
                             .padding()
@@ -145,6 +161,29 @@ struct AddExpenseView: View {
                                 .foregroundColor(.white)
                                 .cornerRadius(12)
                             }
+                        }
+                        
+                        // Barcode Scanning Row
+                        HStack(spacing: 12) {
+                            Button(action: { showingBarcodeScanner = true }) {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "barcode.viewfinder")
+                                        .font(.system(size: 30))
+                                    Text("Scan Barcode")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.purple)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                            
+                            // Placeholder button to maintain layout
+                            Rectangle()
+                                .fill(Color.clear)
+                                .frame(maxWidth: .infinity)
                         }
                     }
                     
@@ -398,6 +437,24 @@ struct AddExpenseView: View {
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(selectedImage: $selectedImage, showingManualEntry: $showingManualEntry)
         }
+        .sheet(isPresented: $showingOCRDemo) {
+            OCRDemoView(
+                demoItems: $demoItems,
+                showingDemoResults: $showingDemoResults,
+                onComplete: { items in
+                    parsedItems = items
+                    showingParsedItems = true
+                    showingOCRDemo = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingBarcodeScanner) {
+            BarcodeScannerView(viewModel: barcodeScannerVM) { selectedItems in
+                parsedItems = selectedItems
+                showingParsedItems = true
+                showingBarcodeScanner = false
+            }
+        }
     }
     
     private func addNewItem() {
@@ -588,10 +645,21 @@ struct EditableItemRow: View {
                                 // Remove any existing dollar signs and format
                                 let cleanValue = newValue.replacingOccurrences(of: "$", with: "")
                                     .replacingOccurrences(of: ",", with: "")
-                                priceText = cleanValue
+                                
+                                // Only allow digits and one decimal point
+                                let filtered = cleanValue.filter { "0123456789.".contains($0) }
+                                
+                                // Ensure only one decimal point
+                                let components = filtered.components(separatedBy: ".")
+                                if components.count > 2 {
+                                    // If more than one decimal point, keep only the first one
+                                    priceText = components[0] + "." + components[1]
+                                } else {
+                                    priceText = filtered
+                                }
                                 
                                 // Mark as no longer new item once user starts typing
-                                if !cleanValue.isEmpty {
+                                if !priceText.isEmpty {
                                     isNewItem = false
                                 }
                             }
@@ -683,6 +751,407 @@ struct EditableItemRow: View {
         isNewItem = false
         onUpdate(item)
         isEditing = false
+    }
+}
+
+struct BarcodeScannerView: View {
+    @ObservedObject var viewModel: BarcodeScannerViewModel
+    let onComplete: ([(name: String, price: Double)]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var showingConfirmation = false
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                if !viewModel.showingResults {
+                    // Scanning View
+                    VStack(spacing: 30) {
+                        Text("📱 Barcode Scanner")
+                            .font(.title)
+                            .fontWeight(.bold)
+                        
+                        // Mock scanner viewfinder
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.black)
+                                .frame(height: 200)
+                            
+                            if viewModel.isScanning {
+                                VStack(spacing: 15) {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(1.5)
+                                    
+                                    Text("Scanning...")
+                                        .foregroundColor(.white)
+                                        .font(.headline)
+                                    
+                                    // Animated scanning line
+                                    Rectangle()
+                                        .fill(Color.green)
+                                        .frame(height: 2)
+                                        .padding(.horizontal, 20)
+                                        .opacity(0.8)
+                                }
+                            } else {
+                                VStack {
+                                    Image(systemName: "barcode.viewfinder")
+                                        .font(.system(size: 60))
+                                        .foregroundColor(.white)
+                                    Text("Tap to scan barcode")
+                                        .foregroundColor(.white)
+                                        .font(.headline)
+                                }
+                            }
+                        }
+                        .onTapGesture {
+                            if !viewModel.isScanning {
+                                viewModel.startScanning()
+                            }
+                        }
+                        
+                        if !viewModel.isScanning {
+                            Button(action: {
+                                viewModel.startScanning()
+                            }) {
+                                HStack {
+                                    Image(systemName: "barcode")
+                                    Text("Start Scanning")
+                                }
+                                .font(.headline)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.purple)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding()
+                } else {
+                    // Results View
+                    VStack(alignment: .leading, spacing: 20) {
+                        HStack {
+                            Text("🎯 Barcode: \(viewModel.scannedBarcode ?? "Unknown")")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                        
+                        Text("Found \(viewModel.parsedItems.count) items:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                        
+                        ScrollView {
+                            LazyVStack(spacing: 8) {
+                                ForEach(Array(viewModel.parsedItems.enumerated()), id: \.offset) { index, item in
+                                    let isSelected = viewModel.selectedItems.contains(index)
+                                    
+                                    Button(action: {
+                                        viewModel.toggleItemSelection(at: index)
+                                    }) {
+                                        HStack {
+                                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                                .foregroundColor(isSelected ? .purple : .gray)
+                                            
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(item.name)
+                                                    .font(.body)
+                                                    .fontWeight(.medium)
+                                                    .foregroundColor(.primary)
+                                                Text("Scanned from barcode")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            Text(item.price, format: .currency(code: "USD"))
+                                                .font(.body)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(.green)
+                                        }
+                                        .padding()
+                                        .background(isSelected ? Color.purple.opacity(0.1) : Color(.systemGray6))
+                                        .cornerRadius(10)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                        
+                        HStack(spacing: 12) {
+                            Button("Select All") {
+                                viewModel.selectAllItems()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.purple)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                            
+                            Button("Clear All") {
+                                viewModel.deselectAllItems()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(8)
+                            
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+            }
+            .navigationTitle("Barcode Scanner")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                if viewModel.showingResults {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Add Items") {
+                            showingConfirmation = true
+                        }
+                        .disabled(viewModel.selectedItems.isEmpty)
+                    }
+                }
+            }
+        }
+        .alert("Add Items to Receipt?", isPresented: $showingConfirmation) {
+            Button("Add All") {
+                let selectedItems = viewModel.getSelectedItems()
+                onComplete(selectedItems)
+                dismiss()
+            }
+            
+            Button("Choose Items") {
+                // This will show the current selection interface
+                showingConfirmation = false
+            }
+            
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Do you want to add all selected items to your current receipt?")
+        }
+        .alert("Error", isPresented: $viewModel.showingError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.errorMessage)
+        }
+        .onDisappear {
+            viewModel.reset()
+        }
+    }
+}
+
+struct OCRDemoView: View {
+    @Binding var demoItems: [(name: String, price: Double)]
+    @Binding var showingDemoResults: Bool
+    let onComplete: ([(name: String, price: Double)]) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var currentStep = 0
+    @State private var isProcessing = false
+    @State private var selectedItems: Set<Int> = []
+    
+    private let demoSteps = [
+        "Taking photo of receipt...",
+        "Analyzing image with OCR...",
+        "Extracting item details...",
+        "Parsing prices and names..."
+    ]
+    
+    private let fakeDemoItems = [
+        (name: "Organic Bananas", price: 3.99),
+        (name: "Whole Milk 1 Gallon", price: 4.29),
+        (name: "Bread - Whole Wheat", price: 2.79),
+        (name: "Greek Yogurt", price: 5.49),
+        (name: "Chicken Breast", price: 12.99),
+        (name: "Broccoli", price: 2.99),
+        (name: "Pasta Sauce", price: 3.29),
+        (name: "Spaghetti", price: 1.99)
+    ]
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                if !showingDemoResults {
+                    // Demo Processing View
+                    VStack(spacing: 30) {
+                        Text("🎬 OCR Demo")
+                            .font(.title)
+                            .fontWeight(.bold)
+                        
+                        // Fake receipt image
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(.systemGray6))
+                            .frame(height: 200)
+                            .overlay(
+                                VStack {
+                                    Text("📄")
+                                        .font(.system(size: 60))
+                                    Text("Sample Receipt")
+                                        .font(.headline)
+                                        .foregroundColor(.secondary)
+                                }
+                            )
+                        
+                        if isProcessing {
+                            VStack(spacing: 15) {
+                                ProgressView()
+                                    .scaleEffect(1.2)
+                                
+                                if currentStep < demoSteps.count {
+                                    Text(demoSteps[currentStep])
+                                        .font(.body)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        } else {
+                            Button(action: startDemo) {
+                                HStack {
+                                    Image(systemName: "camera.viewfinder")
+                                    Text("Start OCR Demo")
+                                }
+                                .font(.headline)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.blue)
+                                .foregroundColor(.white)
+                                .cornerRadius(12)
+                            }
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding()
+                } else {
+                    // Demo Results View
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("✨ Items Found!")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .padding(.horizontal)
+                        
+                        Text("Select items to add to your expense:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal)
+                        
+                        ScrollView {
+                            LazyVStack(spacing: 8) {
+                                ForEach(Array(fakeDemoItems.enumerated()), id: \.offset) { index, item in
+                                    let isSelected = selectedItems.contains(index)
+                                    
+                                    Button(action: {
+                                        if isSelected {
+                                            selectedItems.remove(index)
+                                        } else {
+                                            selectedItems.insert(index)
+                                        }
+                                    }) {
+                                        HStack {
+                                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                                .foregroundColor(isSelected ? .blue : .gray)
+                                            
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(item.name)
+                                                    .font(.body)
+                                                    .fontWeight(.medium)
+                                                    .foregroundColor(.primary)
+                                                Text("Detected item")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            Text("$\(item.price, specifier: "%.2f")")
+                                                .font(.body)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(.green)
+                                        }
+                                        .padding()
+                                        .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
+                                        .cornerRadius(10)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                        
+                        HStack(spacing: 12) {
+                            Button("Select All") {
+                                selectedItems = Set(0..<fakeDemoItems.count)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(8)
+                            
+                            Button("Clear All") {
+                                selectedItems.removeAll()
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color(.systemGray5))
+                            .foregroundColor(.primary)
+                            .cornerRadius(8)
+                            
+                            Spacer()
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+            }
+            .navigationTitle("OCR Demo")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                
+                if showingDemoResults {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Done") {
+                            let selectedDemoItems = selectedItems.map { fakeDemoItems[$0] }
+                            onComplete(selectedDemoItems)
+                        }
+                        .disabled(selectedItems.isEmpty)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func startDemo() {
+        isProcessing = true
+        currentStep = 0
+        
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+            if currentStep < demoSteps.count - 1 {
+                currentStep += 1
+            } else {
+                timer.invalidate()
+                showingDemoResults = true
+                isProcessing = false
+                // Pre-select a few items for demo
+                selectedItems = Set([0, 1, 3, 4])
+            }
+        }
     }
 }
 

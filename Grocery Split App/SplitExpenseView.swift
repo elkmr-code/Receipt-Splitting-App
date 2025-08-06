@@ -13,13 +13,16 @@ struct EnhancedSplitExpenseView: View {
     @State private var selectedParticipants: Set<UUID> = []
     @State private var customSplitAmounts: [UUID: Double] = [:]
     @State private var shareMessage = "Hey! Here's your share from our recent expense. No rush, but would love to settle this when you get a chance! 😊"
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
+    @State private var itemAssignments: [UUID: Set<UUID>] = [:] // participantId -> Set of itemIds
+    @State private var showingItemAssignment = false
     
     enum SplitMethod: String, CaseIterable {
         case evenSplit = "Even Split"
         case customSplit = "Custom Amounts"
         case percentageSplit = "Percentage Split"
         case itemBased = "Item-Based Split"
-        case byWeight = "By Consumption Weight"
         
         var icon: String {
             switch self {
@@ -27,7 +30,6 @@ struct EnhancedSplitExpenseView: View {
             case .customSplit: return "slider.horizontal.3"
             case .percentageSplit: return "percent"
             case .itemBased: return "list.bullet"
-            case .byWeight: return "scalemass"
             }
         }
         
@@ -37,7 +39,6 @@ struct EnhancedSplitExpenseView: View {
             case .customSplit: return "Set custom amounts for each person"
             case .percentageSplit: return "Split by percentage contribution"
             case .itemBased: return "Assign specific items to people"
-            case .byWeight: return "Split based on consumption patterns"
             }
         }
     }
@@ -82,6 +83,22 @@ struct EnhancedSplitExpenseView: View {
         }
         .sheet(isPresented: $showingShareSheet) {
             ShareSheet(activityItems: [shareContent])
+        }
+        .alert("Alert", isPresented: $showingAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(alertMessage)
+        }
+        .sheet(isPresented: $showingItemAssignment) {
+            ItemAssignmentView(
+                expense: expense,
+                participants: participants,
+                itemAssignments: $itemAssignments,
+                onComplete: {
+                    calculateItemBasedSplit()
+                    showingItemAssignment = false
+                }
+            )
         }
     }
     
@@ -213,8 +230,14 @@ struct EnhancedSplitExpenseView: View {
     
     private var splitPreviewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Split Preview")
-                .font(.headline)
+            HStack {
+                Image(systemName: "person.3.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(.blue)
+                Text("Split Preview")
+                    .font(.headline)
+                Spacer()
+            }
             
             let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             
@@ -394,7 +417,6 @@ struct EnhancedSplitExpenseView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
             }
-            .disabled(selectedParticipants.isEmpty)
             
             Button(action: shareAsGroup) {
                 VStack(spacing: 4) {
@@ -410,7 +432,6 @@ struct EnhancedSplitExpenseView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
             }
-            .disabled(participants.isEmpty)
             
             Button(action: shareWithPaymentMethods) {
                 VStack(spacing: 4) {
@@ -426,7 +447,6 @@ struct EnhancedSplitExpenseView: View {
                 .foregroundColor(.white)
                 .cornerRadius(10)
             }
-            .disabled(selectedParticipants.isEmpty)
         }
     }
     
@@ -449,7 +469,7 @@ struct EnhancedSplitExpenseView: View {
         if let index = participants.firstIndex(where: { $0.id == updatedParticipant.id }) {
             participants[index] = updatedParticipant
             // Recalculate when participant data changes to maintain consistency
-            if splitMethod == .evenSplit || splitMethod == .byWeight {
+            if splitMethod == .evenSplit {
                 recalculateSplit()
             }
         }
@@ -496,16 +516,11 @@ struct EnhancedSplitExpenseView: View {
             }
             
         case .itemBased:
-            recalculateEvenSplit()
-            
-        case .byWeight:
-            let totalWeight = participants.reduce(0) { $0 + $1.weight }
-            if totalWeight > 0 {
-                for i in participants.indices {
-                    let weightRatio = participants[i].weight / totalWeight
-                    participants[i].amount = expense.totalCost * weightRatio
-                    participants[i].percentage = weightRatio * 100
-                }
+            if !expense.items.isEmpty {
+                showingItemAssignment = true
+                calculateItemBasedSplit()
+            } else {
+                recalculateEvenSplit()
             }
         }
     }
@@ -545,6 +560,12 @@ struct EnhancedSplitExpenseView: View {
     private func shareIndividually() {
         let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
         
+        if selectedPeople.isEmpty {
+            alertMessage = "Please select at least one participant to share individually."
+            showingAlert = true
+            return
+        }
+        
         for participant in selectedPeople {
             let content = generateIndividualShareContent(for: participant)
             shareContent = content
@@ -553,12 +574,24 @@ struct EnhancedSplitExpenseView: View {
     }
     
     private func shareAsGroup() {
+        if participants.isEmpty {
+            alertMessage = "Please add at least one participant to share as a group."
+            showingAlert = true
+            return
+        }
         shareContent = generateGroupShareContent()
         showingShareSheet = true
     }
     
     private func shareWithPaymentMethods() {
         let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
+        
+        if selectedPeople.isEmpty {
+            alertMessage = "Please select at least one participant to share with payment methods."
+            showingAlert = true
+            return
+        }
+        
         shareContent = generatePaymentShareContent(for: selectedPeople)
         showingShareSheet = true
     }
@@ -630,17 +663,53 @@ struct EnhancedSplitExpenseView: View {
     
     private func autoAdjustSplit() {
         // For custom splits, automatically adjust to match the total
-        let totalSplit = participants.reduce(0) { $0 + $1.amount }
+        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let totalSplit = validParticipants.reduce(0) { $0 + $1.amount }
         let difference = expense.totalCost - totalSplit
         
-        guard !participants.isEmpty && abs(difference) > 0.01 else { return }
+        guard !validParticipants.isEmpty && abs(difference) > 0.01 else { return }
         
-        // Adjust the first participant's amount to make the total correct
-        participants[0].amount += difference
+        if splitMethod == .customSplit {
+            // For custom split, adjust the first participant's amount to make total correct
+            if let firstIndex = participants.firstIndex(where: { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+                participants[firstIndex].amount += difference
+                
+                // Update percentage accordingly
+                participants[firstIndex].percentage = (participants[firstIndex].amount / expense.totalCost) * 100
+            }
+        } else {
+            // For other split methods, recalculate evenly
+            let amountPerPerson = expense.totalCost / Double(validParticipants.count)
+            let percentagePerPerson = 100.0 / Double(validParticipants.count)
+            
+            for i in participants.indices {
+                if !participants[i].name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    participants[i].amount = amountPerPerson
+                    participants[i].percentage = percentagePerPerson
+                } else {
+                    participants[i].amount = 0.0
+                    participants[i].percentage = 0.0
+                }
+            }
+        }
+    }
+
+    private func calculateItemBasedSplit() {
+        // Reset all amounts first
+        for i in participants.indices {
+            participants[i].amount = 0.0
+            participants[i].percentage = 0.0
+        }
         
-        // If using percentage split, update percentage accordingly
-        if splitMethod == .percentageSplit {
-            participants[0].percentage = (participants[0].amount / expense.totalCost) * 100
+        // Calculate amounts based on item assignments
+        for i in participants.indices {
+            let participant = participants[i]
+            if let assignedItemIds = itemAssignments[participant.id] {
+                let assignedItems = expense.items.filter { assignedItemIds.contains($0.id) }
+                let totalCost = assignedItems.reduce(0) { $0 + $1.price }
+                participants[i].amount = totalCost
+                participants[i].percentage = expense.totalCost > 0 ? (totalCost / expense.totalCost) * 100 : 0
+            }
         }
     }
 }
@@ -723,27 +792,103 @@ struct ParticipantRow: View {
                 Text("%")
             }
             
-        case .byWeight:
-            HStack {
-                Text("Weight:")
-                Spacer()
-                TextField("1.0", value: $participant.weight, format: .number.precision(.fractionLength(1)))
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .keyboardType(.decimalPad)
-                    .frame(width: 80)
-                    .onChange(of: participant.weight) { _, _ in
-                        onUpdate(participant)
-                    }
-            }
-            
         default:
-            HStack {
-                Text("Amount:")
-                Spacer()
-                Text("$\(participant.amount, specifier: "%.2f")")
-                    .fontWeight(.semibold)
-                    .foregroundColor(.green)
+            // Remove amount display from main participants section
+            // Amounts will only be shown in the selection section below
+            EmptyView()
+        }
+    }
+}
+
+struct ItemAssignmentView: View {
+    let expense: Expense
+    let participants: [SplitParticipant]
+    @Binding var itemAssignments: [UUID: Set<UUID>]
+    let onComplete: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Assign items to participants")
+                        .font(.headline)
+                        .padding(.horizontal)
+                    
+                    ForEach(expense.items) { item in
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text(item.name)
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                Spacer()
+                                Text(item.price, format: .currency(code: "USD"))
+                                    .font(.body)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.green)
+                            }
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                            
+                            Text("Assign to:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal)
+                            
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 8) {
+                                ForEach(participants) { participant in
+                                    let isAssigned = itemAssignments[participant.id]?.contains(item.id) ?? false
+                                    
+                                    Button(action: {
+                                        toggleItemAssignment(participantId: participant.id, itemId: item.id)
+                                    }) {
+                                        HStack {
+                                            Image(systemName: isAssigned ? "checkmark.circle.fill" : "circle")
+                                                .foregroundColor(isAssigned ? .blue : .gray)
+                                            Text(participant.name)
+                                                .font(.caption)
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(isAssigned ? Color.blue.opacity(0.1) : Color(.systemGray6))
+                                        .cornerRadius(6)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+                .padding()
             }
+            .navigationTitle("Assign Items")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        onComplete()
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func toggleItemAssignment(participantId: UUID, itemId: UUID) {
+        if itemAssignments[participantId] == nil {
+            itemAssignments[participantId] = Set<UUID>()
+        }
+        
+        if itemAssignments[participantId]!.contains(itemId) {
+            itemAssignments[participantId]!.remove(itemId)
+        } else {
+            itemAssignments[participantId]!.insert(itemId)
         }
     }
 }

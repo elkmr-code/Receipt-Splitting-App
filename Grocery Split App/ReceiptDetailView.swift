@@ -150,25 +150,17 @@ struct ExpenseDetailView: View {
                     } else {
                         LazyVStack(spacing: 1) {
                             ForEach(expense.items.sorted(by: { $0.name < $1.name })) { item in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.name)
-                                            .font(.body)
-                                            .fontWeight(.medium)
-                                        Text("Individual item")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                                EditableExpenseItemRow(
+                                    item: item,
+                                    onUpdate: { updatedItem in
+                                        if let index = expense.items.firstIndex(where: { $0.id == updatedItem.id }) {
+                                            expense.items[index] = updatedItem
+                                        }
+                                    },
+                                    onDelete: {
+                                        expense.items.removeAll { $0.id == item.id }
                                     }
-                                    
-                                    Spacer()
-                                    
-                                    Text(item.price, format: .currency(code: "USD"))
-                                        .font(.body)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.primary)
-                                }
-                                .padding()
-                                .background(Color(.systemBackground))
+                                )
                             }
                         }
                         .background(Color(.systemGray5))
@@ -495,6 +487,118 @@ struct SplitExpenseView: View {
            let rootViewController = window.rootViewController {
             rootViewController.present(activityViewController, animated: true)
         }
+    }
+}
+
+struct EditableExpenseItemRow: View {
+    @State private var item: ExpenseItem
+    let onUpdate: (ExpenseItem) -> Void
+    let onDelete: () -> Void
+    @State private var isEditing = false
+    @State private var priceText = ""
+    @State private var showingAlert = false
+    @State private var alertMessage = ""
+    
+    init(item: ExpenseItem, onUpdate: @escaping (ExpenseItem) -> Void, onDelete: @escaping () -> Void) {
+        self._item = State(initialValue: item)
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
+        self._priceText = State(initialValue: String(format: "%.2f", item.price))
+    }
+    
+    var body: some View {
+        HStack {
+            if isEditing {
+                VStack(spacing: 8) {
+                    TextField("Item name", text: $item.name)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    
+                    HStack {
+                        Text("$")
+                            .foregroundColor(.secondary)
+                        TextField("0.00", text: $priceText)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .keyboardType(.decimalPad)
+                            .onChange(of: priceText) { _, newValue in
+                                // Only allow valid decimal numbers
+                                let filtered = newValue.filter { "0123456789.".contains($0) }
+                                if filtered != newValue {
+                                    priceText = filtered
+                                }
+                            }
+                    }
+                    
+                    HStack {
+                        Button("Cancel") {
+                            isEditing = false
+                            priceText = String(format: "%.2f", item.price)
+                        }
+                        .foregroundColor(.red)
+                        
+                        Spacer()
+                        
+                        Button("Save") {
+                            saveChanges()
+                        }
+                        .foregroundColor(.blue)
+                        .disabled(item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || priceText.isEmpty)
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name)
+                        .font(.body)
+                        .fontWeight(.medium)
+                    Text("Individual item")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                Text(item.price, format: .currency(code: "USD"))
+                    .font(.body)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                
+                Button(action: { isEditing = true }) {
+                    Image(systemName: "pencil")
+                        .foregroundColor(.blue)
+                }
+                
+                Button(action: {
+                    onDelete()
+                }) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .alert("Error", isPresented: $showingAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(alertMessage)
+        }
+    }
+    
+    private func saveChanges() {
+        guard !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            alertMessage = "Item name cannot be empty"
+            showingAlert = true
+            return
+        }
+        
+        guard let price = Double(priceText), price >= 0 else {
+            alertMessage = "Please enter a valid price"
+            showingAlert = true
+            return
+        }
+        
+        item.price = price
+        onUpdate(item)
+        isEditing = false
     }
 }
 
