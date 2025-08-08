@@ -1,6 +1,132 @@
 import Foundation
 import SwiftData
 
+// MARK: - Receipt Source Types
+enum ReceiptSourceType: String, CaseIterable, Codable {
+    case qr = "QR Code"
+    case barcode = "Barcode"
+    case ocr = "OCR Scan"
+    case manual = "Manual Entry"
+    
+    var icon: String {
+        switch self {
+        case .qr: return "qrcode"
+        case .barcode: return "barcode"
+        case .ocr: return "doc.text.viewfinder"
+        case .manual: return "plus.circle.fill"
+        }
+    }
+}
+
+// MARK: - Split Status
+enum SplitStatus: String, CaseIterable, Codable {
+    case draft = "Draft"
+    case pending = "Pending"
+    case sent = "Sent"
+    case complete = "Complete"
+    
+    var color: String {
+        switch self {
+        case .draft: return "gray"
+        case .pending: return "orange"
+        case .sent: return "blue"
+        case .complete: return "green"
+        }
+    }
+}
+
+// MARK: - Request Status
+enum RequestStatus: String, CaseIterable, Codable {
+    case pending = "Pending"
+    case sent = "Sent"
+    case overdue = "Overdue"
+    case paid = "Paid"
+    
+    var icon: String {
+        switch self {
+        case .pending: return "clock"
+        case .sent: return "paperplane"
+        case .overdue: return "exclamationmark.triangle"
+        case .paid: return "checkmark.circle"
+        }
+    }
+}
+
+// MARK: - Request Priority
+enum RequestPriority: String, CaseIterable, Codable {
+    case normal = "Normal"
+    case high = "High"
+    
+    var color: String {
+        switch self {
+        case .normal: return "blue"
+        case .high: return "red"
+        }
+    }
+}
+
+// MARK: - Receipt Model
+@Model
+class Receipt {
+    var id: UUID
+    var sourceType: ReceiptSourceType
+    var receiptID: String?
+    var rawText: String
+    var imageData: Data?
+    var captureDate: Date
+    var expense: Expense?
+    
+    init(id: UUID = UUID(), 
+         sourceType: ReceiptSourceType, 
+         receiptID: String? = nil,
+         rawText: String = "",
+         imageData: Data? = nil,
+         captureDate: Date = Date(),
+         expense: Expense? = nil) {
+        self.id = id
+        self.sourceType = sourceType
+        self.receiptID = receiptID
+        self.rawText = rawText
+        self.imageData = imageData
+        self.captureDate = captureDate
+        self.expense = expense
+    }
+}
+
+// MARK: - Split Request Model
+@Model
+class SplitRequest {
+    var id: UUID
+    var participantName: String
+    var amount: Double
+    var status: RequestStatus
+    var messageText: String
+    var priority: RequestPriority
+    var dueDate: Date?
+    var createdDate: Date
+    var expense: Expense?
+    
+    init(id: UUID = UUID(),
+         participantName: String,
+         amount: Double,
+         status: RequestStatus = .pending,
+         messageText: String = "",
+         priority: RequestPriority = .normal,
+         dueDate: Date? = nil,
+         createdDate: Date = Date(),
+         expense: Expense? = nil) {
+        self.id = id
+        self.participantName = participantName
+        self.amount = amount
+        self.status = status
+        self.messageText = messageText
+        self.priority = priority
+        self.dueDate = dueDate
+        self.createdDate = createdDate
+        self.expense = expense
+    }
+}
+
 enum PaymentMethod: String, CaseIterable, Codable {
     case cash = "Cash"
     case creditCard = "Credit Card"
@@ -80,7 +206,25 @@ class Expense {
     var notes: String
     @Relationship(deleteRule: .cascade, inverse: \ExpenseItem.expense) var items: [ExpenseItem]
     
-    init(id: UUID = UUID(), name: String, date: Date = Date(), payerName: String, paymentMethod: PaymentMethod = .cash, category: ExpenseCategory = .other, notes: String = "") {
+    // Enhanced fields for split functionality
+    var splitStatus: SplitStatus
+    var message: String?
+    var lastSentDate: Date?
+    var currencyCode: String
+    @Relationship(deleteRule: .cascade, inverse: \SplitRequest.expense) var splitRequests: [SplitRequest]
+    @Relationship(deleteRule: .cascade, inverse: \Receipt.expense) var receipt: Receipt?
+    
+    init(id: UUID = UUID(), 
+         name: String, 
+         date: Date = Date(), 
+         payerName: String, 
+         paymentMethod: PaymentMethod = .cash, 
+         category: ExpenseCategory = .other, 
+         notes: String = "",
+         splitStatus: SplitStatus = .draft,
+         message: String? = nil,
+         lastSentDate: Date? = nil,
+         currencyCode: String = "USD") {
         self.id = id
         self.name = name
         self.date = date
@@ -89,6 +233,12 @@ class Expense {
         self.category = category
         self.notes = notes
         self.items = []
+        self.splitStatus = splitStatus
+        self.message = message
+        self.lastSentDate = lastSentDate
+        self.currencyCode = currencyCode
+        self.splitRequests = []
+        self.receipt = nil
     }
     
     var totalCost: Double {

@@ -35,13 +35,6 @@ struct ExpenseListView: View {
                                     .foregroundColor(.white)
                                     .cornerRadius(12)
                             }
-                            
-                            Button(action: addSampleData) {
-                                Text("Try with Sample Data")
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                                    .padding(.top, 8)
-                            }
                         }
                         .padding(.horizontal, 40)
                     }
@@ -83,84 +76,6 @@ struct ExpenseListView: View {
         for index in offsets {
             modelContext.delete(expenses[index])
         }
-    }
-    
-    private func addSampleData() {
-        let sampleExpenses = [
-            Expense(
-                name: "Dinner at Italian Restaurant",
-                date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
-                payerName: "Sarah",
-                paymentMethod: .creditCard,
-                category: .dining,
-                notes: "Birthday celebration for Mike"
-            ),
-            Expense(
-                name: "Weekend Grocery Shopping",
-                date: Calendar.current.date(byAdding: .day, value: -3, to: Date()) ?? Date(),
-                payerName: "John",
-                paymentMethod: .applePay,
-                category: .groceries,
-                notes: "Shared groceries for the house"
-            ),
-            Expense(
-                name: "Movie Night",
-                date: Calendar.current.date(byAdding: .day, value: -5, to: Date()) ?? Date(),
-                payerName: "Emily",
-                paymentMethod: .venmo,
-                category: .entertainment,
-                notes: "Tickets and snacks"
-            )
-        ]
-        
-        // Add sample items to expenses
-        for expense in sampleExpenses {
-            modelContext.insert(expense)
-            
-            switch expense.category {
-            case .dining:
-                let items = [
-                    ExpenseItem(name: "Pasta Carbonara", price: 18.50, expense: expense),
-                    ExpenseItem(name: "Margherita Pizza", price: 16.00, expense: expense),
-                    ExpenseItem(name: "Caesar Salad", price: 12.00, expense: expense),
-                    ExpenseItem(name: "Tiramisu", price: 8.50, expense: expense),
-                    ExpenseItem(name: "Wine Bottle", price: 25.00, expense: expense)
-                ]
-                for item in items {
-                    modelContext.insert(item)
-                    expense.items.append(item)
-                }
-                
-            case .groceries:
-                let items = [
-                    ExpenseItem(name: "Organic Bananas", price: 3.99, expense: expense),
-                    ExpenseItem(name: "Whole Milk", price: 4.25, expense: expense),
-                    ExpenseItem(name: "Bread", price: 2.50, expense: expense),
-                    ExpenseItem(name: "Chicken Breast", price: 12.99, expense: expense),
-                    ExpenseItem(name: "Mixed Vegetables", price: 6.75, expense: expense)
-                ]
-                for item in items {
-                    modelContext.insert(item)
-                    expense.items.append(item)
-                }
-                
-            case .entertainment:
-                let items = [
-                    ExpenseItem(name: "Movie Tickets (x3)", price: 36.00, expense: expense),
-                    ExpenseItem(name: "Large Popcorn", price: 8.50, expense: expense),
-                    ExpenseItem(name: "Drinks", price: 12.00, expense: expense)
-                ]
-                for item in items {
-                    modelContext.insert(item)
-                    expense.items.append(item)
-                }
-                
-            default:
-                break
-            }
-        }
-        
-        try? modelContext.save()
     }
 }
 
@@ -222,5 +137,5 @@ struct ExpenseRowView: View {
 
 #Preview {
     ExpenseListView()
-        .modelContainer(for: [Expense.self, ExpenseItem.self])
+        .modelContainer(for: [Expense.self, ExpenseItem.self, Receipt.self, SplitRequest.self])
 }
