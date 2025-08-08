@@ -40,6 +40,7 @@ struct AddExpenseView: View {
     @State private var showingReceiptCamera = false
     @State private var showingCodeGallery = false
     @State private var imageForCodeScan: UIImage?
+    @State private var showingPreScanHelper = false
     
     var body: some View {
         NavigationStack {
@@ -107,7 +108,13 @@ struct AddExpenseView: View {
                         
                         // Scanning Row (First Row)
                         HStack(spacing: 12) {
-                            Button(action: { showingCodeScanOptions = true }) {
+                            Button(action: { 
+                                if UserDefaults.shouldShowScanHelp() {
+                                    showingPreScanHelper = true
+                                } else {
+                                    showingCodeScanOptions = true
+                                }
+                            }) {
                                 VStack(spacing: 8) {
                                     if scanningService.isScanning {
                                         ProgressView()
@@ -129,7 +136,13 @@ struct AddExpenseView: View {
                             }
                             .disabled(scanningService.isScanning)
                             
-                            Button(action: { showingReceiptScanOptions = true }) {
+                            Button(action: { 
+                                if UserDefaults.shouldShowScanHelp() {
+                                    showingPreScanHelper = true
+                                } else {
+                                    showingReceiptScanOptions = true
+                                }
+                            }) {
                                 VStack(spacing: 8) {
                                     Image(systemName: "doc.text.viewfinder")
                                         .font(.system(size: 30))
@@ -505,6 +518,9 @@ struct AddExpenseView: View {
         }
         .sheet(isPresented: $showingCodeGallery) {
             ImagePicker(selectedImage: $imageForCodeScan, showingManualEntry: .constant(false), sourceType: .photoLibrary)
+        }
+        .sheet(isPresented: $showingPreScanHelper) {
+            PreScanHelperView()
         }
     }
     
