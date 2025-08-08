@@ -25,9 +25,6 @@ struct AddExpenseView: View {
     @State private var showingCameraOptions = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
-    @State private var showingOCRDemo = false
-    @State private var demoItems: [(name: String, price: Double)] = []
-    @State private var showingDemoResults = false
     @State private var showingBarcodeScanner = false
     @StateObject private var barcodeScannerVM = BarcodeScannerViewModel()
     @StateObject private var scanningService = ScanningService()
@@ -86,39 +83,18 @@ struct AddExpenseView: View {
                                     }
                                 }
                                 
-                                HStack(spacing: 12) {
-                                    Button(action: {
-                                        showingOCRDemo = true
-                                        showingOCRTutorial = false
-                                        UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
-                                    }) {
-                                        HStack {
-                                            Image(systemName: "play.circle.fill")
-                                            Text("Play Demo")
-                                        }
-                                        .font(.caption)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(Color.blue)
-                                        .foregroundColor(.white)
-                                        .cornerRadius(8)
-                                    }
-                                    
                                     Button(action: {
                                         showingOCRTutorial = false
                                         UserDefaults.standard.set(true, forKey: "hasSeenOCRTutorial")
                                     }) {
-                                        Text("Maybe Later")
+                                        Text("Got It")
                                             .font(.caption)
                                             .padding(.horizontal, 12)
                                             .padding(.vertical, 6)
-                                            .background(Color(.systemGray5))
-                                            .foregroundColor(.primary)
+                                            .background(Color.blue)
+                                            .foregroundColor(.white)
                                             .cornerRadius(8)
                                     }
-                                    
-                                    Spacer()
-                                }
                             }
                             .padding()
                             .background(Color.blue.opacity(0.1))
@@ -169,37 +145,20 @@ struct AddExpenseView: View {
                             }
                         }
                         
-                        // Manual Entry Row (Second Row)
-                        HStack(spacing: 12) {
-                            Button(action: { showingManualEntry = true }) {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.system(size: 30))
-                                    Text("Manual Entry")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
+                        // Manual Entry Row (Second Row) - now full width
+                        Button(action: { showingManualEntry = true }) {
+                            VStack(spacing: 8) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 30))
+                                Text("Manual Entry")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
                             }
-                            
-                            Button(action: loadSampleReceipt) {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "doc.text.image")
-                                        .font(.system(size: 30))
-                                    Text("Try Sample")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.orange)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
                         }
                     }
                     
@@ -453,17 +412,6 @@ struct AddExpenseView: View {
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(selectedImage: $selectedImage, showingManualEntry: $showingManualEntry)
         }
-        .sheet(isPresented: $showingOCRDemo) {
-            OCRDemoView(
-                demoItems: $demoItems,
-                showingDemoResults: $showingDemoResults,
-                onComplete: { items in
-                    parsedItems = items
-                    showingParsedItems = true
-                    showingOCRDemo = false
-                }
-            )
-        }
         .sheet(isPresented: $showingBarcodeScanner) {
             BarcodeScannerView(viewModel: barcodeScannerVM) { selectedItems in
                 parsedItems = selectedItems
@@ -599,23 +547,6 @@ struct AddExpenseView: View {
                 }
             }
         }
-    }
-    
-    private func loadSampleReceipt() {
-        parsedItems = [
-            (name: "Organic Apples", price: 4.99),
-            (name: "Whole Grain Bread", price: 3.49),
-            (name: "Free Range Eggs", price: 5.99),
-            (name: "Greek Yogurt", price: 6.49),
-            (name: "Olive Oil", price: 8.99)
-        ]
-        expenseName = "Sample Grocery Shopping"
-        payerName = "Demo User"
-        selectedCategory = .groceries
-        selectedPaymentMethod = .creditCard
-        notes = "This is a sample expense to demonstrate the app"
-        showingParsedItems = true
-        showingManualEntry = false
     }
     
     private func saveExpense() {
@@ -1128,206 +1059,6 @@ struct BarcodeScannerView: View {
         }
         .onDisappear {
             viewModel.reset()
-        }
-    }
-}
-
-struct OCRDemoView: View {
-    @Binding var demoItems: [(name: String, price: Double)]
-    @Binding var showingDemoResults: Bool
-    let onComplete: ([(name: String, price: Double)]) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var currentStep = 0
-    @State private var isProcessing = false
-    @State private var selectedItems: Set<Int> = []
-    
-    private let demoSteps = [
-        "Taking photo of receipt...",
-        "Analyzing image with OCR...",
-        "Extracting item details...",
-        "Parsing prices and names..."
-    ]
-    
-    private let fakeDemoItems = [
-        (name: "Organic Bananas", price: 3.99),
-        (name: "Whole Milk 1 Gallon", price: 4.29),
-        (name: "Bread - Whole Wheat", price: 2.79),
-        (name: "Greek Yogurt", price: 5.49),
-        (name: "Chicken Breast", price: 12.99),
-        (name: "Broccoli", price: 2.99),
-        (name: "Pasta Sauce", price: 3.29),
-        (name: "Spaghetti", price: 1.99)
-    ]
-    
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
-                if !showingDemoResults {
-                    // Demo Processing View
-                    VStack(spacing: 30) {
-                        Text("🎬 OCR Demo")
-                            .font(.title)
-                            .fontWeight(.bold)
-                        
-                        // Fake receipt image
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.systemGray6))
-                            .frame(height: 200)
-                            .overlay(
-                                VStack {
-                                    Text("📄")
-                                        .font(.system(size: 60))
-                                    Text("Sample Receipt")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-                                }
-                            )
-                        
-                        if isProcessing {
-                            VStack(spacing: 15) {
-                                ProgressView()
-                                    .scaleEffect(1.2)
-                                
-                                if currentStep < demoSteps.count {
-                                    Text(demoSteps[currentStep])
-                                        .font(.body)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        } else {
-                            Button(action: startDemo) {
-                                HStack {
-                                    Image(systemName: "camera.viewfinder")
-                                    Text("Start OCR Demo")
-                                }
-                                .font(.headline)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                            }
-                        }
-                        
-                        Spacer()
-                    }
-                    .padding()
-                } else {
-                    // Demo Results View
-                    VStack(alignment: .leading, spacing: 20) {
-                        Text("✨ Items Found!")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal)
-                        
-                        Text("Select items to add to your expense:")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal)
-                        
-                        ScrollView {
-                            LazyVStack(spacing: 8) {
-                                ForEach(Array(fakeDemoItems.enumerated()), id: \.offset) { index, item in
-                                    let isSelected = selectedItems.contains(index)
-                                    
-                                    Button(action: {
-                                        if isSelected {
-                                            selectedItems.remove(index)
-                                        } else {
-                                            selectedItems.insert(index)
-                                        }
-                                    }) {
-                                        HStack {
-                                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                                .foregroundColor(isSelected ? .blue : .gray)
-                                            
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(item.name)
-                                                    .font(.body)
-                                                    .fontWeight(.medium)
-                                                    .foregroundColor(.primary)
-                                                Text("Detected item")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                            
-                                            Spacer()
-                                            
-                                            Text("$\(item.price, specifier: "%.2f")")
-                                                .font(.body)
-                                                .fontWeight(.semibold)
-                                                .foregroundColor(.green)
-                                        }
-                                        .padding()
-                                        .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
-                                        .cornerRadius(10)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                        
-                        HStack(spacing: 12) {
-                            Button("Select All") {
-                                selectedItems = Set(0..<fakeDemoItems.count)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
-                            
-                            Button("Clear All") {
-                                selectedItems.removeAll()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(8)
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                    }
-                }
-            }
-            .navigationTitle("OCR Demo")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                
-                if showingDemoResults {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") {
-                            let selectedDemoItems = selectedItems.map { fakeDemoItems[$0] }
-                            onComplete(selectedDemoItems)
-                        }
-                        .disabled(selectedItems.isEmpty)
-                    }
-                }
-            }
-        }
-    }
-    
-    private func startDemo() {
-        isProcessing = true
-        currentStep = 0
-        
-        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-            if currentStep < demoSteps.count - 1 {
-                currentStep += 1
-            } else {
-                timer.invalidate()
-                showingDemoResults = true
-                isProcessing = false
-                // Pre-select a few items for demo
-                selectedItems = Set([0, 1, 3, 4])
-            }
         }
     }
 }
