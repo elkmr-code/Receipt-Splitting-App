@@ -1065,5 +1065,5 @@ struct BarcodeScannerView: View {
 
 #Preview {
     AddExpenseView()
-        .modelContainer(for: [Expense.self, ExpenseItem.self])
+        .modelContainer(for: [Expense.self, ExpenseItem.self, Receipt.self, SplitRequest.self])
 }

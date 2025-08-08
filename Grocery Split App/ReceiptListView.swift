@@ -137,5 +137,5 @@ struct ExpenseRowView: View {
 
 #Preview {
     ExpenseListView()
-        .modelContainer(for: [Expense.self, ExpenseItem.self])
+        .modelContainer(for: [Expense.self, ExpenseItem.self, Receipt.self, SplitRequest.self])
 }
