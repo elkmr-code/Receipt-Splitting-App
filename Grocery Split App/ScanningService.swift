@@ -40,7 +40,8 @@ class ScanningService: ObservableObject {
                 type: .barcode,
                 sourceId: receiptId,
                 items: items,
-                originalText: scannedData
+                originalText: scannedData,
+                image: nil
             )
             
         } else if isValidTransactionId(scannedData) {
@@ -49,7 +50,8 @@ class ScanningService: ObservableObject {
                 type: .barcode,
                 sourceId: scannedData.trimmingCharacters(in: .whitespacesAndNewlines),
                 items: [], // Items will need to be entered manually or retrieved from external service
-                originalText: scannedData
+                originalText: scannedData,
+                image: nil
             )
             
         } else {
@@ -99,9 +101,13 @@ class ScanningService: ObservableObject {
                         return
                     }
                     
-                    let items = self.parseReceiptText(recognizedText)
+                    let parsed = ReceiptParser.parseReceiptTextEnhanced(recognizedText)
+                    let items = parsed.items
                     
                     if items.isEmpty {
+#if DEBUG
+                        print("RAW OCR TEXT (no items found):\n\(recognizedText)")
+#endif
                         self.error = "No valid items found in text"
                         continuation.resume(throwing: ScanningError.noItemsFound)
                         return
@@ -111,7 +117,8 @@ class ScanningService: ObservableObject {
                         type: .ocr,
                         sourceId: "OCR_\(Date().timeIntervalSince1970)",
                         items: items,
-                        originalText: recognizedText
+                        originalText: recognizedText,
+                        image: image
                     )
                     
                     self.scanResult = result
@@ -122,6 +129,7 @@ class ScanningService: ObservableObject {
             // Configure OCR for better receipt recognition
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
+            request.recognitionLanguages = ["en-US"]
             
             guard let cgImage = image.cgImage else {
                 Task { @MainActor in
@@ -249,9 +257,10 @@ struct ScanResult: Identifiable {
     let sourceId: String
     let items: [ParsedItem]
     let originalText: String
+    let image: UIImage?
     
     var total: Double {
-        return items.reduce(0) { $0 + $1.price }
+        items.reduce(0) { $0 + $1.totalPrice }
     }
 }
 

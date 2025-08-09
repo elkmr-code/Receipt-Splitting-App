@@ -24,29 +24,34 @@ class BarcodeService: ObservableObject {
         }
         
         return try await withCheckedThrowingContinuation { continuation in
-            guard let cgImage = image.cgImage else {
+            let resumeLock = NSLock()
+            var didResume = false
+            func resumeOnce(_ action: () -> Void) {
+                resumeLock.lock(); defer { resumeLock.unlock() }
+                guard !didResume else { return }
+                didResume = true
+                action()
+            }
+            guard let cgImage = image.cgImage ?? BarcodeService.rasterizeToCGImage(image) else {
                 continuation.resume(throwing: BarcodeServiceError.invalidImage)
                 return
             }
             
             let request = VNDetectBarcodesRequest { request, error in
                 if let error = error {
-                    continuation.resume(throwing: error)
+                    resumeOnce { continuation.resume(throwing: error) }
                     return
                 }
-                
                 guard let observations = request.results as? [VNBarcodeObservation],
                       let firstBarcode = observations.first,
                       let payloadString = firstBarcode.payloadStringValue else {
-                    continuation.resume(throwing: BarcodeServiceError.noBarcodeFound)
+                    resumeOnce { continuation.resume(throwing: BarcodeServiceError.noBarcodeFound) }
                     return
                 }
-                
                 Task { @MainActor in
                     self.scanResult = payloadString
                 }
-                
-                continuation.resume(returning: payloadString)
+                resumeOnce { continuation.resume(returning: payloadString) }
             }
             
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
@@ -54,9 +59,22 @@ class BarcodeService: ObservableObject {
             do {
                 try handler.perform([request])
             } catch {
-                continuation.resume(throwing: error)
+                // Some Vision failures can also invoke the request callback; protect against double-resume
+                resumeOnce { continuation.resume(throwing: error) }
             }
         }
+    }
+
+    // Fallback for images that don't have a CGImage backing (e.g., PDFs, vector assets)
+    private static func rasterizeToCGImage(_ image: UIImage) -> CGImage? {
+        let size = image.size
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = image.scale
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        let rendered = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return rendered.cgImage
     }
     
     // Parse barcode payload for receipt information
@@ -220,3 +238,4 @@ struct ProductionReceiptParser {
         }
     }
 }
+

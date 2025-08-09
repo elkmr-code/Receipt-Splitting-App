@@ -1,9 +1,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Message Composer Helper
-struct MessageComposer {
-    
 // MARK: - Message Templates
 struct MessageTemplate {
     let name: String

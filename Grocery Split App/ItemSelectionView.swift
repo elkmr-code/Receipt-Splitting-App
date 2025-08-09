@@ -30,6 +30,30 @@ struct ItemSelectionView: View {
                 }
                 .padding(.horizontal)
                 
+                // Receipt thumbnail and raw text
+                if let image = scanResult.image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxHeight: 140)
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                }
+
+                DisclosureGroup("View Original Text") {
+                    ScrollView {
+                        Text(scanResult.originalText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .background(Color(.systemGray6))
+                            .cornerRadius(8)
+                    }
+                    .frame(maxHeight: 100)
+                }
+                .padding(.horizontal)
+
                 // Selection controls
                 HStack(spacing: 16) {
                     Button("Select All") {
@@ -105,7 +129,7 @@ struct ItemSelectionView: View {
                 // Total for selected items
                 if !selectedItems.isEmpty {
                     let selectedTotal = scanResult.items.filter { selectedItems.contains($0.id) }
-                        .reduce(0) { $0 + $1.price }
+                        .reduce(0) { $0 + $1.totalPrice }
                     
                     HStack {
                         Text("Selected Total:")
@@ -122,20 +146,7 @@ struct ItemSelectionView: View {
                     .padding(.horizontal)
                 }
                 
-                // Original text preview (expandable)
-                DisclosureGroup("View Original Text") {
-                    ScrollView {
-                        Text(scanResult.originalText)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(8)
-                    }
-                    .frame(maxHeight: 100)
-                }
-                .padding(.horizontal)
+                
             }
             .navigationTitle("Select Items")
             .navigationBarTitleDisplayMode(.inline)
@@ -285,7 +296,7 @@ struct ScanningResultsView: View {
             ParsedItem(name: "Bread", price: 1.20),
             ParsedItem(name: "Apples", price: 3.00)
         ],
-        originalText: "Milk 2.50\nBread 1.20\nApples 3.00\nTotal 6.70"
+        originalText: "Milk 2.50\nBread 1.20\nApples 3.00\nTotal 6.70", image: nil
     )
     
     ItemSelectionView(

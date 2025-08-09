@@ -17,6 +17,8 @@ struct EnhancedSplitExpenseView: View {
     @State private var showingMessageTemplates = false
     @State private var showingPaymentMethodSelector = false
     @State private var selectedPaymentMethodForSharing: PaymentMethod = .venmo
+    @State private var showingFinalMessagePreview = false
+    @State private var finalShareMessage = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var itemAssignments: [UUID: Set<UUID>] = [:] // participantId -> Set of itemIds
@@ -141,13 +143,46 @@ struct EnhancedSplitExpenseView: View {
             PaymentMethodSelectorView(
                 selectedMethod: $selectedPaymentMethodForSharing,
                 onConfirm: {
+                    // Build a preview message with the chosen method and show editable preview
+                    let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
+                    finalShareMessage = generatePaymentShareContentWithMethod(
+                        for: selectedPeople.isEmpty ? participants : selectedPeople,
+                        paymentMethod: selectedPaymentMethodForSharing
+                    )
                     showingPaymentMethodSelector = false
-                    shareWithSelectedPaymentMethod()
+                    showingFinalMessagePreview = true
                 },
                 onCancel: {
                     showingPaymentMethodSelector = false
                 }
             )
+        }
+        .sheet(isPresented: $showingFinalMessagePreview) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Preview & Edit Message")
+                        .font(.headline)
+                    TextEditor(text: $finalShareMessage)
+                        .frame(minHeight: 220)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(8)
+                    Spacer()
+                }
+                .padding()
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showingFinalMessagePreview = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Confirm & Send") {
+                            shareMessage = finalShareMessage
+                            sendPaymentRequests()
+                            showingFinalMessagePreview = false
+                        }.fontWeight(.semibold)
+                    }
+                }
+            }
         }
     }
     
@@ -442,23 +477,7 @@ struct EnhancedSplitExpenseView: View {
             }
             .padding(.top, 4)
             
-            // Inline message preview
-            PreviewMessageSection(
-                shareMessage: shareMessage,
-                expense: expense,
-                selectedParticipants: selectedParticipants.compactMap { participantId in
-                    participants.first { $0.id == participantId }
-                },
-                splitMethod: splitMethod,
-                selectedPaymentMethod: selectedPaymentMethodForSharing,
-                onMessageUpdate: { newMessage in
-                    shareMessage = newMessage
-                },
-                onSendMessage: {
-                    // Handle sending the message
-                    sendPaymentRequests()
-                }
-            )
+            // Removed always-on inline preview to keep a single preview flow (final sheet only)
         }
     }
     
@@ -973,13 +992,28 @@ struct ParticipantRow: View {
             HStack {
                 Text("Percentage:")
                 Spacer()
-                TextField("0", value: $participant.percentage, format: .number.precision(.fractionLength(1)))
+                TextField("", text: Binding(
+                    get: { participant.percentage == 0 ? "" : String(format: "%.1f", participant.percentage) },
+                    set: { newValue in
+                        // Allow digits and one decimal point; interpret as percentage, not fraction
+                        let filtered = newValue.filter { "0123456789.".contains($0) }
+                        var comps = filtered.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+                        if comps.count > 2 { comps = Array(comps.prefix(2)) }
+                        let sanitized = comps.joined(separator: ".")
+                        if let val = Double(sanitized) {
+                            participant.percentage = min(max(val, 0), 100)
+                        } else if sanitized.isEmpty {
+                            participant.percentage = 0
+                        }
+                        participant.amount = totalAmount * (participant.percentage / 100.0)
+                        onUpdate(participant)
+                    }
+                ))
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .keyboardType(.decimalPad)
                     .frame(width: 80)
-                    .onChange(of: participant.percentage) { _, _ in
-                        participant.amount = totalAmount * (participant.percentage / 100.0)
-                        onUpdate(participant)
+                    .onTapGesture {
+                        // Keep empty on first tap for quick typing
                     }
                 Text("%")
             }
@@ -1187,8 +1221,8 @@ struct PaymentMethodSelectorView: View {
     }
 }
 
-// MARK: - Preview Message Section
-struct PreviewMessageSection: View {
+// MARK: - Inline Preview Message Section
+struct InlineMessagePreviewSection: View {
     let shareMessage: String
     let expense: Expense
     let selectedParticipants: [SplitParticipant]

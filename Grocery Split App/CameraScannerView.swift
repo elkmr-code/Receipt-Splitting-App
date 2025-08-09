@@ -31,7 +31,7 @@ struct CameraScannerView: View {
         NavigationStack {
             ZStack {
                 // Real camera preview or fallback
-                if cameraService.isCameraAvailable && !ProcessInfo.processInfo.isiOSAppOnMac {
+        if cameraService.isCameraAvailable && !ProcessInfo.processInfo.isiOSAppOnMac {
                     CameraPreviewView(cameraService: cameraService)
                         .ignoresSafeArea()
                 } else {
@@ -127,26 +127,39 @@ struct CameraScannerView: View {
                     // Scanning status and controls
                     VStack(spacing: 16) {
                         if isScanning {
-                            VStack(spacing: 12) {
-                                ProgressView(value: scanProgress, total: 1.0)
-                                    .progressViewStyle(LinearProgressViewStyle(tint: .green))
-                                    .frame(height: 8)
-                                    .scaleEffect(x: 1, y: 2, anchor: .center)
-                                
-                                if scanningStep < scanningSteps.count {
-                                    Text(scanningSteps[scanningStep])
+                            if scanType == .barcode {
+                                VStack(spacing: 12) {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .green))
+                                    Text("Scanning for codes…")
                                         .font(.headline)
                                         .foregroundColor(.white)
-                                        .animation(.easeInOut, value: scanningStep)
                                 }
-                                
-                                Text("\(Int(scanProgress * 100))%")
-                                    .font(.subheadline)
-                                    .foregroundColor(.white.opacity(0.8))
+                                .padding()
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(12)
+                            } else {
+                                VStack(spacing: 12) {
+                                    ProgressView(value: scanProgress, total: 1.0)
+                                        .progressViewStyle(LinearProgressViewStyle(tint: .green))
+                                        .frame(height: 8)
+                                        .scaleEffect(x: 1, y: 2, anchor: .center)
+                                    
+                                    if scanningStep < scanningSteps.count {
+                                        Text(scanningSteps[scanningStep])
+                                            .font(.headline)
+                                            .foregroundColor(.white)
+                                            .animation(.easeInOut, value: scanningStep)
+                                    }
+                                    
+                                    Text("\(Int(scanProgress * 100))%")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                                .padding()
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(12)
                             }
-                            .padding()
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(12)
                         } else if showingResult {
                             VStack(spacing: 8) {
                                 Image(systemName: "checkmark.circle.fill")
@@ -261,6 +274,9 @@ struct CameraScannerView: View {
                 try await cameraService.requestPermission()
                 if scanType == .barcode {
                     try await cameraService.startBarcodeSession()
+                    await MainActor.run {
+                        isScanning = true
+                    }
                 } else {
                     try await cameraService.startCameraSession()
                 }
@@ -277,7 +293,12 @@ struct CameraScannerView: View {
             startRealScanning()
         } else {
             // Fallback for simulator - show photo picker
-            showingPhotosPicker = true
+            if scanType == .barcode {
+                // For barcode on simulator, fall back to choosing a photo with a code
+                showingPhotosPicker = true
+            } else {
+                showingPhotosPicker = true
+            }
         }
     }
     
@@ -300,15 +321,19 @@ struct CameraScannerView: View {
     }
     
     private func startBarcodeDetection() {
-        // In production, this would use AVFoundation barcode detection
-        // For now, we'll fall back to photo picker
-        Task {
-            await MainActor.run {
-                isScanning = false
-                animationOffset = -200
-                showingPhotosPicker = true
+        // Configure handler to receive detected barcode payloads from CameraService
+        cameraService.onBarcodeDetected = { payload in
+            Task {
+                do {
+                    let scanningService = ScanningService()
+                    let result = try await scanningService.scanCode(from: payload)
+                    await completeScanning(with: result)
+                } catch {
+                    await handleScanError(error)
+                }
             }
         }
+        // CameraService.startBarcodeSession() already added a metadata output; nothing else to do here
     }
     
     private func startReceiptCapture() {
@@ -493,8 +518,9 @@ class CameraService: NSObject, ObservableObject {
     @Published var isCameraAvailable = false
     @Published var isScanning = false
     
-    private var captureSession: AVCaptureSession?
+    var captureSession: AVCaptureSession?
     private var videoPreviewLayer: AVCaptureVideoPreviewLayer?
+    var onBarcodeDetected: ((String) -> Void)?
     
     override init() {
         super.init()
@@ -534,7 +560,9 @@ class CameraService: NSObject, ObservableObject {
         }
         
         if session.canAddInput(input) {
-            session.canAddInput(input)
+            session.addInput(input)
+        } else {
+            throw CameraError.setupFailed
         }
         
         DispatchQueue.global(qos: .userInitiated).async {
@@ -543,8 +571,28 @@ class CameraService: NSObject, ObservableObject {
     }
     
     func startBarcodeSession() async throws {
-        try await startCameraSession()
-        // Additional barcode-specific setup would go here
+        guard isCameraAvailable else { return }
+        captureSession = AVCaptureSession()
+        captureSession?.sessionPreset = .high
+        
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+              let input = try? AVCaptureDeviceInput(device: device),
+              let session = captureSession else {
+            throw CameraError.setupFailed
+        }
+        
+        if session.canAddInput(input) { session.addInput(input) } else { throw CameraError.setupFailed }
+        
+        let metadataOutput = AVCaptureMetadataOutput()
+        if session.canAddOutput(metadataOutput) {
+            session.addOutput(metadataOutput)
+            metadataOutput.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
+            metadataOutput.metadataObjectTypes = [.qr, .ean13, .ean8, .code128, .pdf417, .aztec, .dataMatrix]
+        } else {
+            throw CameraError.setupFailed
+        }
+        
+        DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
     }
     
     func detectBarcode() async throws -> String {
@@ -561,6 +609,15 @@ class CameraService: NSObject, ObservableObject {
     
     private func checkCameraAvailability() {
         isCameraAvailable = AVCaptureDevice.default(for: .video) != nil
+    }
+}
+
+extension CameraService: AVCaptureMetadataOutputObjectsDelegate {
+    func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+        guard let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+              let payload = object.stringValue else { return }
+        onBarcodeDetected?(payload)
+        stopSession()
     }
 }
 
@@ -586,25 +643,22 @@ struct CameraPreviewView: UIViewRepresentable {
     let cameraService: CameraService
     
     func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        
-        if let session = cameraService.captureSession {
-            let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-            previewLayer.videoGravity = .resizeAspectFill
-            view.layer.addSublayer(previewLayer)
-            
-            // Store reference for frame updates
-            DispatchQueue.main.async {
-                previewLayer.frame = view.bounds
-            }
-        }
-        
-        return view
+        UIView()
     }
     
     func updateUIView(_ uiView: UIView, context: Context) {
+        // Lazily create the preview layer once the session becomes available
+        guard let session = cameraService.captureSession else { return }
         if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
+            if previewLayer.session == nil {
+                previewLayer.session = session
+            }
             previewLayer.frame = uiView.bounds
+        } else {
+            let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+            previewLayer.videoGravity = .resizeAspectFill
+            previewLayer.frame = uiView.bounds
+            uiView.layer.addSublayer(previewLayer)
         }
     }
 }

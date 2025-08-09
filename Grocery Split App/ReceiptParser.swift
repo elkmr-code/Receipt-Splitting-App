@@ -69,15 +69,17 @@ class ReceiptParser {
     // MARK: - Enhanced Item Patterns
     private static let itemPatterns = [
         // Quantity patterns: "2x Apple $1.25", "3 × Banana $2.50"
-        #"(\d+)\s*[x×]\s*(.+?)\s+(\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)"#,
+        #"(\d+)\s*[x×]\s*(.+?)\s+(\$?\s?\d{1,3}(?:,\d{3})*(?:[\.,]\d{2})?)"#,
+        // Quantity leading without x: "1 Americano $3.19"
+        #"^\s*(\d+)\s+([A-Za-z][\w\s\-&',\.]+?)\s+(\$?\s?\d{1,3}(?:,\d{3})*(?:[\.,]\d{2})?)$"#,
         // Standard item: "Apple Juice  $3.99"
-        #"^([A-Za-z][\w\s\-&',\.]+?)\s{2,}(\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)$"#,
+        #"^([A-Za-z][\w\s\-&',\.]+?)\s{2,}(\$?\s?\d{1,3}(?:,\d{3})*(?:[\.,]\d{2})?)$"#,
         // Tab-separated: "Apple\t$3.99"
-        #"^([A-Za-z][\w\s\-&',\.]+?)\t+(\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)$"#,
+        #"^([A-Za-z][\w\s\-&',\.]+?)\t+(\$?\s?\d{1,3}(?:,\d{3})*(?:[\.,]\d{2})?)$"#,
         // Dash-separated: "Apple Juice - $3.99"
-        #"^([A-Za-z][\w\s\-&',\.]+?)\s*-\s*(\$?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)$"#,
+        #"^([A-Za-z][\w\s\-&',\.]+?)\s*-\s*(\$?\s?\d{1,3}(?:,\d{3})*(?:[\.,]\d{2})?)$"#,
         // Right-aligned price: "Apple Juice           3.99"
-        #"^([A-Za-z][\w\s\-&',\.]{3,}?)\s{3,}(\d{1,3}(?:,\d{3})*\.\d{2})$"#
+        #"^([A-Za-z][\w\s\-&',\.]{3,}?)\s{3,}(\$?\s?\d{1,3}(?:,\d{3})*[\.,]\d{2})$"#
     ]
     
     // MARK: - Skip Patterns (enhanced)
@@ -86,8 +88,8 @@ class ReceiptParser {
         #"(?i)(store|market|grocery|supermarket|walmart|target|costco|safeway)"#,
         // Contact/Address
         #"(?i)(address|phone|tel|email|www\.|\.com)"#,
-        // Receipt metadata
-        #"(?i)(cashier|register|receipt|invoice|transaction)"#,
+        // Receipt metadata / headings
+        #"(?i)(cashier|register|receipt|invoice|transaction|qty|desc|amount|amt)"#,
         // Totals and calculations
         #"(?i)(total|subtotal|tax|discount|change|balance|due)"#,
         // Payment information
@@ -151,12 +153,18 @@ class ReceiptParser {
         
         var components: [String: Any] = [:]
         
-        // Extract ID
-        if let idRange = payload.range(of: #"id\s*:\s*['""]?([^,'"\]]+)['""]?"#, options: .regularExpression) {
-            let idMatch = String(payload[idRange])
-            if let match = idMatch.firstMatch(of: #"id\s*:\s*['""]?([^,'"\]]+)['""]?"#) {
-                components["id"] = String(match.1)
+        // Extract ID using NSRegularExpression for broad compatibility
+        do {
+            let pattern = #"id\s*:\s*['\"]?([^,'\"\]]+)['\"]?"#
+            let regex = try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+            let searchRange = NSRange(location: 0, length: payload.utf16.count)
+            if let match = regex.firstMatch(in: payload, options: [], range: searchRange),
+               match.numberOfRanges >= 2,
+               let idRange = Range(match.range(at: 1), in: payload) {
+                components["id"] = String(payload[idRange])
             }
+        } catch {
+            // Ignore and fall back to returning nil if we can't parse
         }
         
         // For now, return basic structure - could be enhanced further
@@ -175,26 +183,32 @@ class ReceiptParser {
         var metadata = ReceiptMetadata()
         
         for line in lines {
-            // Skip lines that match skip patterns
-            if shouldSkipLine(line) {
-                continue
-            }
-            
-            // Check for total lines first
+            // Check for total lines first (before skipping)
             if let total = extractTotal(from: line) {
                 detectedTotal = total
                 continue
             }
-            
+
+            // Skip lines that match skip patterns
+            if shouldSkipLine(line) {
+                continue
+            }
+
             // Extract store information
             extractMetadata(from: line, into: &metadata)
-            
+
             // Try to parse as item
             if let item = parseLineItemEnhanced(line, confidence: confidence) {
                 parsedItems.append(item)
             }
         }
         
+        // Fallback: Some receipts place names and prices in separate columns/blocks
+        if parsedItems.isEmpty {
+            let recovered = recoverFromSeparatedColumns(lines)
+            parsedItems.append(contentsOf: recovered)
+        }
+
         // Validate and clean up items
         parsedItems = validateAndCleanItems(parsedItems, detectedTotal: detectedTotal)
         
@@ -202,7 +216,10 @@ class ReceiptParser {
     }
     
     private static func preprocessText(_ text: String) -> [String] {
-        return text.components(separatedBy: .newlines)
+        let normalized = text
+            .replacingOccurrences(of: "\u{00A0}", with: " ") // non-breaking space
+            .replacingOccurrences(of: "\t", with: " ")
+        return normalized.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
@@ -278,8 +295,16 @@ class ReceiptParser {
     private static func cleanPriceString(_ priceString: String) -> String {
         return priceString
             .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: ",", with: "")
+            .replacingOccurrences(of: "O", with: "0") // OCR O->0
+            .replacingOccurrences(of: "o", with: "0")
+            .replacingOccurrences(of: "l", with: "1")
+            .replacingOccurrences(of: "I", with: "1")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: "")
+            .replacingOccurrences(of: "٫", with: ".")
+            .replacingOccurrences(of: "，", with: ".")
     }
     
     private static func isValidItem(name: String, price: Double) -> Bool {
@@ -315,6 +340,69 @@ class ReceiptParser {
             }
         }
         
+        return false
+    }
+
+    // MARK: - Fallback parsing for columnar receipts (names separated from amount lines)
+    private static func recoverFromSeparatedColumns(_ lines: [String]) -> [ParsedItem] {
+        // Heuristics:
+        // - Collect candidate names between headers (QTY/DESC) and totals section
+        // - Collect standalone price lines elsewhere
+        // - If counts match (1..50 items), zip by order
+        let lower = lines.map { $0.lowercased() }
+        let headerIdx = lower.firstIndex(where: { $0.contains("qty") || $0.contains("desc") }) ?? 0
+        let totalsIdx = lower.firstIndex(where: { $0.contains("subtotal") || $0.contains("total ") || $0 == "amt" }) ?? lines.count
+        let candidateSlice = lines[headerIdx..<totalsIdx]
+        let nameBlacklist = ["qty","desc","amount","amt","tab","host","amex","visa","mastercard","cash","debit"]
+        var names: [String] = []
+        for raw in candidateSlice {
+            let l = raw.lowercased()
+            if nameBlacklist.contains(where: { l.contains($0) }) { continue }
+            if l.range(of: #"^\d+$"#, options: .regularExpression) != nil { continue }
+            if isPriceLine(raw) { continue }
+            // Avoid address/date/time etc by reusing skip
+            if shouldSkipLine(raw) { continue }
+            // Keep short reasonable names
+            if raw.count >= 2 && raw.count <= 60 { names.append(cleanItemName(raw)) }
+        }
+        // Collect standalone prices after a trailing "AMT" header if present; this avoids SUBTOTAL/TAX/BALANCE amounts
+        var prices: [Double] = []
+        if let amtIdx = lower.lastIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "amt" }) {
+            let tail = lines[(amtIdx+1)..<lines.count]
+            for raw in tail where isPriceLine(raw) {
+                let p = cleanPriceString(raw)
+                if let value = Double(p) { prices.append(value) }
+            }
+        } else {
+            // Fallback: take all price-like values not directly preceded by subtotal/tax/balance lines
+            for i in 0..<lines.count {
+                let raw = lines[i]
+                if isPriceLine(raw) {
+                    let prev = i > 0 ? lines[i-1].lowercased() : ""
+                    if prev.contains("subtotal") || prev.contains("tax") || prev.contains("balance") { continue }
+                    let p = cleanPriceString(raw)
+                    if let value = Double(p) { prices.append(value) }
+                }
+            }
+        }
+        // If counts match and within a sane range, zip
+        var items: [ParsedItem] = []
+        if names.count == prices.count && !names.isEmpty && names.count <= 50 {
+            for (n, p) in zip(names, prices) {
+                if isValidItem(name: n, price: p) {
+                    items.append(ParsedItem(name: n, price: p, quantity: 1, confidence: 0.6))
+                }
+            }
+        }
+        return items
+    }
+
+    private static func isPriceLine(_ line: String) -> Bool {
+        for pattern in currencyPatterns {
+            if line.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
         return false
     }
     

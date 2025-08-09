@@ -162,7 +162,15 @@ struct AddExpenseView: View {
                             .accessibilityLabel("Scan receipt with camera OCR")
                             .accessibilityHint("Takes a photo of your receipt and extracts items automatically")
                         }
+                        .padding(.horizontal)
                         
+                        #if DEBUG
+                        Text("Debug: tap title 5× to load sample")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        #endif
+
                         // Manual Entry Row (Second Row) - now full width
                         Button(action: { showingManualEntry = true }) {
                             VStack(spacing: 8) {
@@ -298,7 +306,6 @@ struct AddExpenseView: View {
                             .accessibilityLabel("Continue to manual item entry")
                             .accessibilityHint("Proceeds to add expense items manually")
                         }
-                        }
                     }
                     
                     // Parsed/Manual Items Review
@@ -401,9 +408,19 @@ struct AddExpenseView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Add Expense")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // Replace title with a principal toolbar item so we can attach a hidden DEBUG gesture
+                ToolbarItem(placement: .principal) {
+                    Text("Add Expense")
+                        .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
+#if DEBUG
+                        .onTapGesture(count: 5) {
+                            debugLoadDemoReceipt()
+                        }
+#endif
+                }
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") {
                         dismiss()
@@ -446,25 +463,22 @@ struct AddExpenseView: View {
         .sheet(isPresented: $showingOCRImagePicker) {
             ImagePicker(selectedImage: $imageForOCR, showingManualEntry: .constant(false), sourceType: .photoLibrary)
         }
-        .sheet(isPresented: $showingScanResults) {
-            if let scanResult = currentScanResult {
-                ScanningResultsView(
-                    scanResult: scanResult,
-                    onAddAll: {
-                        addAllScannedItems(scanResult.items)
-                        showingScanResults = false
-                    },
-                    onChooseItems: {
-                        selectedScanItems = Set(scanResult.items.map { $0.id })
-                        showingItemSelection = true
-                        showingScanResults = false
-                    },
-                    onCancel: {
-                        showingScanResults = false
-                        currentScanResult = nil
-                    }
-                )
-            }
+        .sheet(item: $currentScanResult) { scanResult in
+            ScanningResultsView(
+                scanResult: scanResult,
+                onAddAll: {
+                    addAllScannedItems(scanResult.items)
+                    currentScanResult = nil
+                },
+                onChooseItems: {
+                    selectedScanItems = Set(scanResult.items.map { $0.id })
+                    showingItemSelection = true
+                    currentScanResult = scanResult
+                },
+                onCancel: {
+                    currentScanResult = nil
+                }
+            )
         }
         .sheet(isPresented: $showingItemSelection) {
             if let scanResult = currentScanResult {
@@ -586,6 +600,9 @@ struct AddExpenseView: View {
     }
     
     private func saveExpense() {
+        commitAllEditableRows()
+        // Give rows a tick to push their updates
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
         let expense = Expense(
             name: expenseName,
             payerName: payerName,
@@ -604,9 +621,12 @@ struct AddExpenseView: View {
         
         try? modelContext.save()
         dismiss()
+        }
     }
     
     private func saveExpenseWithoutItems() {
+        commitAllEditableRows()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
         let expense = Expense(
             name: expenseName,
             payerName: payerName,
@@ -618,6 +638,7 @@ struct AddExpenseView: View {
         modelContext.insert(expense)
         try? modelContext.save()
         dismiss()
+        }
     }
     
     // MARK: - Production Scanning Methods
@@ -627,7 +648,6 @@ struct AddExpenseView: View {
             do {
                 let result = try await scanningService.performOCR(on: image)
                 currentScanResult = result
-                showingScanResults = true
             } catch {
                 let errorInfo = ErrorHandler.handle(
                     error: error,
@@ -639,7 +659,7 @@ struct AddExpenseView: View {
     }
     
     private func addAllScannedItems(_ items: [ParsedItem]) {
-        let newItems = items.map { ($0.name, $0.price) }
+        let newItems = items.map { ($0.name, $0.totalPrice) }
         parsedItems.append(contentsOf: newItems)
         showingParsedItems = true
         currentScanResult = nil
@@ -659,7 +679,8 @@ struct AddExpenseView: View {
                         type: .barcode,
                         sourceId: receiptData.transactionId,
                         items: items,
-                        originalText: payload
+                        originalText: payload,
+                        image: image
                     )
                     currentScanResult = result
                     showingScanResults = true
@@ -669,7 +690,8 @@ struct AddExpenseView: View {
                         type: .barcode,
                         sourceId: payload,
                         items: [], // Empty items - user will add manually
-                        originalText: payload
+                        originalText: payload,
+                        image: image
                     )
                     currentScanResult = result
                     showingScanResults = true
@@ -689,6 +711,73 @@ struct AddExpenseView: View {
     private func handleCameraScanResult(_ result: ScanResult) {
         currentScanResult = result
         showingScanResults = true
+    }
+
+#if DEBUG
+    /// Hidden developer gesture handler to load a bundled demo receipt
+    private func debugLoadDemoReceipt() {
+        guard let demo = UIImage(named: "DemoReceipt") else {
+            let info = ErrorHandler.handle(
+                error: ScanningError.invalidImage,
+                context: "DEBUG Demo Receipt",
+                userMessage: "DemoReceipt image not found in assets. Add an image asset named 'DemoReceipt'."
+            )
+            self.errorInfo = info
+            return
+        }
+
+        // Try QR first from the same image, then fall back to OCR
+        Task {
+            do {
+                let payload = try? await barcodeService.scanBarcode(from: demo)
+                if let payload = payload, let receiptData = barcodeService.parseReceiptData(from: payload) {
+                    let parser = ProductionReceiptParser()
+                    let items = parser.parseItems(from: receiptData)
+                    let result = ScanResult(
+                        type: .barcode,
+                        sourceId: receiptData.transactionId,
+                        items: items,
+                        originalText: payload,
+                        image: demo
+                    )
+#if DEBUG
+                    Task {
+                        if let t = try? await OCRService().recognizeText(from: demo) {
+                            print("RAW OCR TEXT:\n\(t)")
+                        } else {
+                            print("RAW OCR TEXT: <nil>")
+                        }
+                    }
+#endif
+                    await MainActor.run {
+                        self.currentScanResult = result
+                        self.showingScanResults = true
+                    }
+                } else {
+                    // No structured data; run OCR
+                    await MainActor.run {
+                        self.performOCR(on: demo)
+                    }
+                }
+            } catch {
+                // If barcode scan fails, run OCR path
+                await MainActor.run {
+                    self.performOCR(on: demo)
+                }
+            }
+        }
+    }
+#endif
+}
+
+// Notification used to ask all editable rows to commit their values silently
+extension Notification.Name {
+    static let commitEditableItems = Notification.Name("CommitEditableItemsNotification")
+}
+
+private extension AddExpenseView {
+    func commitAllEditableRows() {
+        NotificationCenter.default.post(name: .commitEditableItems, object: nil)
     }
 }
 
@@ -864,6 +953,9 @@ struct EditableItemRow: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(8)
+        .onReceive(NotificationCenter.default.publisher(for: .commitEditableItems)) { _ in
+            validateAndSave()
+        }
         .alert("Invalid Price", isPresented: $showingAlert) {
             Button("OK") { }
         } message: {
