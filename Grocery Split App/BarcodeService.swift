@@ -1,201 +1,222 @@
 import Foundation
 import SwiftUI
+import AVFoundation
+import Vision
 
-// MARK: - Barcode Service
+// MARK: - Production Barcode Service
 class BarcodeService: ObservableObject {
     @Published var isScanning = false
     @Published var scanResult: String?
     @Published var error: String?
     
-    // Mock receipt database
-    private let mockReceipts: [String: String] = [
-        "TXN12345": """
-        Milk 3.50
-        Bread 2.00
-        Eggs 4.20
-        Apple 1.00
-        Total 10.70
-        """,
-        "TXN67890": """
-        Organic Bananas 3.99
-        Whole Milk 1 Gallon 4.29
-        Greek Yogurt 5.49
-        Chicken Breast 12.99
-        Broccoli 2.99
-        Total 29.75
-        """,
-        "TXN11111": """
-        Coffee Beans 12.99
-        Orange Juice 3.79
-        Pasta 1.99
-        Pasta Sauce 2.49
-        Parmesan Cheese 6.99
-        Total 28.25
-        """
-    ]
-    
-    // Simulate barcode scanning
-    func scanBarcode() async throws -> String {
+    // Production barcode scanning using real camera/image processing
+    func scanBarcode(from image: UIImage) async throws -> String {
         await MainActor.run {
             isScanning = true
             error = nil
             scanResult = nil
         }
         
-        // Simulate scanning delay
-        try await Task.sleep(for: .seconds(2))
-        
-        // Randomly select a mock barcode
-        let mockBarcodes = Array(mockReceipts.keys)
-        let randomBarcode = mockBarcodes.randomElement() ?? "TXN12345"
-        
-        await MainActor.run {
-            isScanning = false
-            scanResult = randomBarcode
+        defer {
+            Task { @MainActor in
+                isScanning = false
+            }
         }
         
-        return randomBarcode
+        return try await withCheckedThrowingContinuation { continuation in
+            guard let cgImage = image.cgImage else {
+                continuation.resume(throwing: BarcodeServiceError.invalidImage)
+                return
+            }
+            
+            let request = VNDetectBarcodesRequest { request, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                
+                guard let observations = request.results as? [VNBarcodeObservation],
+                      let firstBarcode = observations.first,
+                      let payloadString = firstBarcode.payloadStringValue else {
+                    continuation.resume(throwing: BarcodeServiceError.noBarcodeFound)
+                    return
+                }
+                
+                Task { @MainActor in
+                    self.scanResult = payloadString
+                }
+                
+                continuation.resume(returning: payloadString)
+            }
+            
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            
+            do {
+                try handler.perform([request])
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
     }
     
-    // Get receipt text for a barcode
-    func getReceiptText(for barcode: String) -> String? {
-        return mockReceipts[barcode]
+    // Parse barcode payload for receipt information
+    func parseReceiptData(from payload: String) -> ReceiptData? {
+        // Try to parse as JSON first (structured QR codes)
+        if let jsonData = payload.data(using: .utf8),
+           let qrData = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+            return parseQRCodeData(qrData)
+        }
+        
+        // Otherwise treat as simple transaction ID
+        if isValidTransactionId(payload) {
+            return ReceiptData(transactionId: payload, items: [], vendorName: nil)
+        }
+        
+        return nil
     }
     
-    // Get all available mock barcodes (for testing)
-    func getAvailableBarcodes() -> [String] {
-        return Array(mockReceipts.keys)
+    private func parseQRCodeData(_ qrData: [String: Any]) -> ReceiptData? {
+        guard let transactionId = qrData["transactionId"] as? String ?? qrData["receiptId"] as? String else {
+            return nil
+        }
+        
+        var items: [ReceiptItem] = []
+        if let itemsArray = qrData["items"] as? [[String: Any]] {
+            for itemData in itemsArray {
+                if let name = itemData["name"] as? String,
+                   let price = itemData["price"] as? Double {
+                    items.append(ReceiptItem(name: name, price: price))
+                }
+            }
+        }
+        
+        let vendorName = qrData["vendor"] as? String ?? qrData["store"] as? String
+        
+        return ReceiptData(transactionId: transactionId, items: items, vendorName: vendorName)
+    }
+    
+    private func isValidTransactionId(_ payload: String) -> Bool {
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Basic validation for transaction IDs
+        let transactionIdPattern = try! NSRegularExpression(
+            pattern: #"^[A-Z0-9]{3,20}$"#,
+            options: []
+        )
+        
+        let range = NSRange(location: 0, length: trimmed.utf16.count)
+        return transactionIdPattern.firstMatch(in: trimmed, options: [], range: range) != nil
     }
 }
 
-// MARK: - Barcode Receipt Parser
-struct BarcodeReceiptParser {
+// MARK: - Supporting Data Models
+struct ReceiptData {
+    let transactionId: String
+    let items: [ReceiptItem]
+    let vendorName: String?
+}
+
+struct ReceiptItem {
+    let name: String
+    let price: Double
+}
+
+enum BarcodeServiceError: LocalizedError {
+    case invalidImage
+    case noBarcodeFound
+    case invalidBarcodeData
     
-    struct ParsedItem {
-        let name: String
-        let price: Double
-        
-        var asTuple: (name: String, price: Double) {
-            return (name: name, price: price)
+    var errorDescription: String? {
+        switch self {
+        case .invalidImage:
+            return "Invalid image format"
+        case .noBarcodeFound:
+            return "No barcode or QR code found in image"
+        case .invalidBarcodeData:
+            return "Barcode data could not be parsed"
+        }
+    }
+}
+
+// MARK: - Production Receipt Parser
+struct ProductionReceiptParser {
+    
+    func parseItems(from receiptData: ReceiptData) -> [ParsedItem] {
+        return receiptData.items.map { item in
+            ParsedItem(name: item.name, price: item.price)
         }
     }
     
-    func parseItems(from receiptText: String) -> [ParsedItem] {
-        let lines = receiptText.components(separatedBy: .newlines)
+    func parseItemsFromText(_ text: String) -> [ParsedItem] {
+        let lines = text.components(separatedBy: .newlines)
         var items: [ParsedItem] = []
+        
+        // Enhanced parsing with multiple regex patterns for different receipt formats
+        let patterns = [
+            // Pattern 1: "Item Name $XX.XX" or "Item Name XX.XX"
+            #"^(.+?)\s+\$?(\d+\.\d{2})$"#,
+            // Pattern 2: "Item Name - $XX.XX" 
+            #"^(.+?)\s*-\s*\$?(\d+\.\d{2})$"#,
+            // Pattern 3: "XX.XX Item Name"
+            #"^(\d+\.\d{2})\s+(.+)$"#
+        ]
         
         for line in lines {
             let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
             
-            // Skip empty lines and total lines
-            if trimmedLine.isEmpty || 
-               trimmedLine.lowercased().contains("total") ||
-               trimmedLine.lowercased().contains("subtotal") ||
-               trimmedLine.lowercased().contains("tax") {
+            // Skip empty lines and lines with common receipt keywords
+            if shouldIgnoreLine(trimmedLine) {
                 continue
             }
             
-            // Parse line format: "Item Name Price"
-            // Look for the last space-separated number as the price
-            let components = trimmedLine.components(separatedBy: " ")
-            
-            if components.count >= 2,
-               let priceString = components.last,
-               let price = Double(priceString),
-               price > 0 {
-                
-                // Join all components except the last one as the item name
-                let nameComponents = Array(components.dropLast())
-                let itemName = nameComponents.joined(separator: " ")
-                
-                if !itemName.isEmpty {
-                    items.append(ParsedItem(name: itemName, price: price))
+            // Try each pattern
+            for pattern in patterns {
+                if let item = parseLineWithPattern(trimmedLine, pattern: pattern) {
+                    items.append(item)
+                    break
                 }
             }
         }
         
         return items
     }
-}
-
-// MARK: - Barcode Scanner View Model
-@MainActor
-class BarcodeScannerViewModel: ObservableObject {
-    @Published var isScanning = false
-    @Published var scannedBarcode: String?
-    @Published var parsedItems: [BarcodeReceiptParser.ParsedItem] = []
-    @Published var showingResults = false
-    @Published var showingError = false
-    @Published var errorMessage = ""
-    @Published var selectedItems: Set<Int> = []
     
-    private let barcodeService = BarcodeService()
-    private let parser = BarcodeReceiptParser()
-    
-    func startScanning() {
-        Task {
-            do {
-                isScanning = true
-                let barcode = try await barcodeService.scanBarcode()
+    private func parseLineWithPattern(_ line: String, pattern: String) -> ParsedItem? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return nil
+        }
+        
+        let range = NSRange(location: 0, length: line.utf16.count)
+        
+        if let match = regex.firstMatch(in: line, options: [], range: range) {
+            let nameRange = Range(match.range(at: 1), in: line)
+            let priceRange = Range(match.range(at: 2), in: line)
+            
+            if let nameRange = nameRange, let priceRange = priceRange {
+                let name = String(line[nameRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let priceString = String(line[priceRange])
                 
-                // Get receipt text for the scanned barcode
-                if let receiptText = barcodeService.getReceiptText(for: barcode) {
-                    let items = parser.parseItems(from: receiptText)
-                    
-                    await MainActor.run {
-                        self.scannedBarcode = barcode
-                        self.parsedItems = items
-                        self.showingResults = true
-                        self.isScanning = false
-                        
-                        // Pre-select all items by default
-                        self.selectedItems = Set(0..<items.count)
-                    }
-                } else {
-                    await MainActor.run {
-                        self.errorMessage = "No receipt found for barcode: \(barcode)"
-                        self.showingError = true
-                        self.isScanning = false
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    self.errorMessage = "Scanning failed: \(error.localizedDescription)"
-                    self.showingError = true
-                    self.isScanning = false
+                if let price = Double(priceString), !name.isEmpty, price > 0 {
+                    return ParsedItem(name: name, price: price)
                 }
             }
         }
+        
+        return nil
     }
     
-    func toggleItemSelection(at index: Int) {
-        if selectedItems.contains(index) {
-            selectedItems.remove(index)
-        } else {
-            selectedItems.insert(index)
+    private func shouldIgnoreLine(_ line: String) -> Bool {
+        if line.isEmpty { return true }
+        
+        let lowercaseLine = line.lowercased()
+        let ignoreKeywords = [
+            "total", "subtotal", "tax", "discount", "change", "cash", "card", 
+            "receipt", "thank you", "store", "date", "time", "phone", "address",
+            "welcome", "cashier", "customer", "transaction"
+        ]
+        
+        return ignoreKeywords.contains { keyword in
+            lowercaseLine.contains(keyword)
         }
-    }
-    
-    func selectAllItems() {
-        selectedItems = Set(0..<parsedItems.count)
-    }
-    
-    func deselectAllItems() {
-        selectedItems.removeAll()
-    }
-    
-    func getSelectedItems() -> [(name: String, price: Double)] {
-        return selectedItems.compactMap { index in
-            guard index < parsedItems.count else { return nil }
-            return parsedItems[index].asTuple
-        }
-    }
-    
-    func reset() {
-        scannedBarcode = nil
-        parsedItems = []
-        showingResults = false
-        selectedItems = []
-        isScanning = false
     }
 }

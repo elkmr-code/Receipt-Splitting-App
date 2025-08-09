@@ -144,36 +144,46 @@ struct Grocery_Split_AppTests {
         #expect(PaymentMethod.cashapp.rawValue == "CashApp")
     }
     
-    @Test func testMessageTemplates() async throws {
-        // Test all message templates exist and have content
-        let templates = EnhancedSplitExpenseView.MessageTemplate.allCases
-        #expect(templates.count == 5)
+    @Test func testMessageComposerTemplates() async throws {
+        // Test MessageComposer template functionality
+        let templates = MessageComposer.MessageTemplate.allCases
+        #expect(templates.count == 4) // standard, friendly, formal, detailed
         
         for template in templates {
-            #expect(!template.message.isEmpty)
             #expect(!template.icon.isEmpty)
-            #expect(!template.rawValue.isEmpty)
+            #expect(!template.description.isEmpty)
         }
         
-        // Test specific templates
-        #expect(EnhancedSplitExpenseView.MessageTemplate.rude.message.contains("ASAP"))
-        #expect(EnhancedSplitExpenseView.MessageTemplate.couples.message.contains("babe"))
-        #expect(EnhancedSplitExpenseView.MessageTemplate.friendly.message.contains("No rush"))
+        // Test specific template icons
+        #expect(MessageComposer.MessageTemplate.standard.icon == "envelope")
+        #expect(MessageComposer.MessageTemplate.friendly.icon == "heart")
+        #expect(MessageComposer.MessageTemplate.formal.icon == "briefcase")
+        #expect(MessageComposer.MessageTemplate.detailed.icon == "doc.text")
     }
     
-    @Test func testScanningServiceFallback() async throws {
-        let scanningService = ScanningService()
+    @Test func testProductionReceiptParser() async throws {
+        // Test the production receipt parser
+        let parser = ProductionReceiptParser()
         
-        // Test that scanning service provides fallback results instead of throwing errors
-        do {
-            let result = try await scanningService.scanCode()
-            #expect(!result.items.isEmpty)
-            #expect(!result.sourceId.isEmpty)
-            #expect(result.type == .barcode)
-        } catch {
-            // Should not throw error due to fallback implementation
-            #expect(Bool(false), "Scanning should not throw errors with fallback implementation")
-        }
+        let sampleText = """
+        Milk $3.50
+        Bread $2.00
+        Eggs $4.20
+        Total $9.70
+        """
+        
+        let items = parser.parseItemsFromText(sampleText)
+        #expect(items.count == 3) // Should exclude "Total" line
+        #expect(items[0].name == "Milk")
+        #expect(items[0].price == 3.50)
+    }
+    
+    @Test func testProductionBarcodeServiceExists() async throws {
+        // Test that production barcode service exists and works
+        let service = BarcodeService()
+        #expect(!service.isScanning)
+        #expect(service.scanResult == nil)
+        #expect(service.error == nil)
     }
     
     @Test func testPaymentMethodFiltering() async throws {
