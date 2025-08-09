@@ -20,6 +20,7 @@ struct AddExpenseView: View {
     @State private var showingManualEntry = false
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var errorInfo: ErrorDisplayInfo?
     @State private var showingOCRTutorial = !UserDefaults.standard.bool(forKey: "hasSeenOCRTutorial")
     @State private var showingImagePicker = false
     @State private var showingCameraOptions = false
@@ -119,6 +120,7 @@ struct AddExpenseView: View {
                                         ProgressView()
                                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                             .scaleEffect(0.8)
+                                            .accessibilityLabel("Scanning in progress")
                                     } else {
                                         Image(systemName: "qrcode")
                                             .font(.system(size: 30))
@@ -134,6 +136,8 @@ struct AddExpenseView: View {
                                 .cornerRadius(12)
                             }
                             .disabled(scanningService.isScanning)
+                            .accessibilityLabel(AccessibilityHelper.scanButton)
+                            .accessibilityHint("Scans QR codes and barcodes from receipts")
                             
                             Button(action: { 
                                 if UserDefaults.shouldShowScanHelp() {
@@ -155,6 +159,8 @@ struct AddExpenseView: View {
                                 .foregroundColor(.white)
                                 .cornerRadius(12)
                             }
+                            .accessibilityLabel("Scan receipt with camera OCR")
+                            .accessibilityHint("Takes a photo of your receipt and extracts items automatically")
                         }
                         
                         // Manual Entry Row (Second Row) - now full width
@@ -172,6 +178,8 @@ struct AddExpenseView: View {
                             .foregroundColor(.white)
                             .cornerRadius(12)
                         }
+                        .accessibilityLabel(AccessibilityHelper.manualEntryButton)
+                        .accessibilityHint("Add expense items by typing them in manually")
                     }
                     
                     // Image Preview
@@ -265,6 +273,7 @@ struct AddExpenseView: View {
                                     if isProcessing {
                                         ProgressView()
                                             .scaleEffect(0.8)
+                                            .accessibilityLabel("Processing receipt")
                                     }
                                     Text(isProcessing ? "Processing Receipt..." : "Scan Receipt Items")
                                 }
@@ -275,6 +284,8 @@ struct AddExpenseView: View {
                                 .cornerRadius(12)
                             }
                             .disabled(isProcessing)
+                            .accessibilityLabel(isProcessing ? "Processing receipt image" : "Start OCR scanning of receipt")
+                            .accessibilityHint(isProcessing ? "Please wait while we extract items from your receipt" : "Analyzes the receipt image and extracts items and prices")
                         } else {
                             Button(action: { showingParsedItems = true; parsedItems = [] }) {
                                 Text("Continue to Add Items")
@@ -284,6 +295,9 @@ struct AddExpenseView: View {
                                     .foregroundColor(.white)
                                     .cornerRadius(12)
                             }
+                            .accessibilityLabel("Continue to manual item entry")
+                            .accessibilityHint("Proceeds to add expense items manually")
+                        }
                         }
                     }
                     
@@ -299,6 +313,8 @@ struct AddExpenseView: View {
                                         .font(.title2)
                                         .foregroundColor(.blue)
                                 }
+                                .accessibilityLabel(AccessibilityHelper.addItemButton)
+                                .accessibilityHint("Adds a new blank item to the expense")
                             }
                             
                             if parsedItems.isEmpty {
@@ -364,6 +380,8 @@ struct AddExpenseView: View {
                                         .foregroundColor(.white)
                                         .cornerRadius(12)
                                 }
+                                .accessibilityLabel(AccessibilityHelper.saveExpenseButton)
+                                .accessibilityHint("Saves this expense with all items to your records")
                             } else {
                                 Button(action: saveExpenseWithoutItems) {
                                     Text("Save Expense Without Items")
@@ -410,6 +428,7 @@ struct AddExpenseView: View {
         } message: {
             Text(errorMessage)
         }
+        .errorAlert($errorInfo)
         .confirmationDialog("Select Image Source", isPresented: $showingCameraOptions, titleVisibility: .visible) {
             Button("Camera") {
                 showingImagePicker = true
@@ -514,6 +533,8 @@ struct AddExpenseView: View {
         .sheet(isPresented: $showingPreScanHelper) {
             PreScanHelperView()
         }
+        .loadingOverlay(isShowing: isProcessing, message: "Processing receipt image...")
+        .loadingOverlay(isShowing: scanningService.isScanning, message: "Scanning for codes...")
     }
     
     private func addNewItem() {
@@ -537,8 +558,12 @@ struct AddExpenseView: View {
                 await MainActor.run {
                     if items.isEmpty {
                         parsedItems = []
-                        errorMessage = "No items found in the receipt. This is normal for receipts without clear item details. You can add items manually."
-                        showingError = true
+                        let errorInfo = ErrorHandler.handle(
+                            error: ScanningError.noItemsFound,
+                            context: "OCR Processing",
+                            userMessage: "No items found in the receipt. This is normal for receipts without clear item details. You can add items manually."
+                        )
+                        self.errorInfo = errorInfo
                     } else {
                         parsedItems = items
                     }
@@ -547,8 +572,11 @@ struct AddExpenseView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = "Error processing receipt: \(error.localizedDescription)"
-                    showingError = true
+                    let errorInfo = ErrorHandler.handle(
+                        error: error,
+                        context: "Receipt OCR Processing"
+                    )
+                    self.errorInfo = errorInfo
                     isProcessing = false
                     showingParsedItems = true
                     parsedItems = []
@@ -601,8 +629,11 @@ struct AddExpenseView: View {
                 currentScanResult = result
                 showingScanResults = true
             } catch {
-                errorMessage = error.localizedDescription
-                showingError = true
+                let errorInfo = ErrorHandler.handle(
+                    error: error,
+                    context: "Image OCR Processing"
+                )
+                self.errorInfo = errorInfo
             }
         }
     }
@@ -645,19 +676,12 @@ struct AddExpenseView: View {
                 }
             } catch {
                 // Provide specific error message for barcode scanning
-                if let scanError = error as? BarcodeServiceError {
-                    switch scanError {
-                    case .invalidImage:
-                        errorMessage = "Sorry, can't scan this image. Invalid image format. Please select a clear image with a barcode or QR code."
-                    case .noBarcodeFound:
-                        errorMessage = "Sorry, can't scan this image. No barcode or QR code was detected. Please try a clearer image."
-                    case .invalidBarcodeData:
-                        errorMessage = "Sorry, can't scan this image. The barcode data could not be processed. Please try a different code."
-                    }
+                let errorInfo = if let scanError = error as? BarcodeServiceError {
+                    ErrorHandler.handle(error: scanError, context: "Barcode Scanning")
                 } else {
-                    errorMessage = error.localizedDescription
+                    ErrorHandler.handle(error: error, context: "Code Scanning")
                 }
-                showingError = true
+                self.errorInfo = errorInfo
             }
         }
     }
@@ -814,6 +838,9 @@ struct EditableItemRow: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(AccessibilityHelper.expenseItemLabel(name: item.name, price: item.price))
+                .accessibilityHint(AccessibilityHelper.editHint)
                 
                 Spacer()
                 
@@ -823,12 +850,16 @@ struct EditableItemRow: View {
                 }
                 .foregroundColor(.blue)
                 .font(.caption)
+                .accessibilityLabel(AccessibilityHelper.editItemButton)
+                .accessibilityHint("Double-tap to edit this item's name and price")
             }
             
             Button(action: onDelete) {
                 Image(systemName: "trash")
                     .foregroundColor(.red)
             }
+            .accessibilityLabel(AccessibilityHelper.deleteItemButton)
+            .accessibilityHint("Removes this item from the expense")
         }
         .padding()
         .background(Color(.systemGray6))
