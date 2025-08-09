@@ -456,6 +456,7 @@ struct CameraScannerView: View {
                 continuation.resume(throwing: error)
             }
         }
+    }
 }
 
 // MARK: - Camera Scan Type
