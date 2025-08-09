@@ -25,8 +25,7 @@ struct AddExpenseView: View {
     @State private var showingCameraOptions = false
     @State private var showingAlert = false
     @State private var alertMessage = ""
-    @State private var showingBarcodeScanner = false
-    @StateObject private var barcodeScannerVM = BarcodeScannerViewModel()
+    @StateObject private var barcodeService = BarcodeService()
     @StateObject private var scanningService = ScanningService()
     @State private var showingItemSelection = false
     @State private var showingScanResults = false
@@ -425,13 +424,6 @@ struct AddExpenseView: View {
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker(selectedImage: $selectedImage, showingManualEntry: $showingManualEntry)
         }
-        .sheet(isPresented: $showingBarcodeScanner) {
-            BarcodeScannerView(viewModel: barcodeScannerVM) { selectedItems in
-                parsedItems = selectedItems
-                showingParsedItems = true
-                showingBarcodeScanner = false
-            }
-        }
         .sheet(isPresented: $showingOCRImagePicker) {
             ImagePicker(selectedImage: $imageForOCR, showingManualEntry: .constant(false), sourceType: .photoLibrary)
         }
@@ -600,19 +592,7 @@ struct AddExpenseView: View {
         dismiss()
     }
     
-    // MARK: - New Scanning Methods
-    private func scanCode() {
-        Task {
-            do {
-                let result = try await scanningService.scanCode()
-                currentScanResult = result
-                showingScanResults = true
-            } catch {
-                errorMessage = error.localizedDescription
-                showingError = true
-            }
-        }
-    }
+    // MARK: - Production Scanning Methods
     
     private func performOCR(on image: UIImage) {
         Task {
@@ -637,27 +617,42 @@ struct AddExpenseView: View {
     private func performCodeScanFromImage(on image: UIImage) {
         Task {
             do {
-                // For barcode images, we'll try OCR first, but with barcode-specific handling
-                let result = try await scanningService.performOCR(on: image)
-                // Update the result type to indicate it came from a barcode scan
-                let barcodeResult = ScanResult(
-                    type: .barcode,
-                    sourceId: result.sourceId,
-                    items: result.items,
-                    originalText: result.originalText
-                )
-                currentScanResult = barcodeResult
-                showingScanResults = true
+                // Use production barcode service for image-based scanning
+                let payload = try await barcodeService.scanBarcode(from: image)
+                
+                if let receiptData = barcodeService.parseReceiptData(from: payload) {
+                    let parser = ProductionReceiptParser()
+                    let items = parser.parseItems(from: receiptData)
+                    
+                    let result = ScanResult(
+                        type: .barcode,
+                        sourceId: receiptData.transactionId,
+                        items: items,
+                        originalText: payload
+                    )
+                    currentScanResult = result
+                    showingScanResults = true
+                } else {
+                    // Treat as simple transaction ID and let user add items manually
+                    let result = ScanResult(
+                        type: .barcode,
+                        sourceId: payload,
+                        items: [], // Empty items - user will add manually
+                        originalText: payload
+                    )
+                    currentScanResult = result
+                    showingScanResults = true
+                }
             } catch {
                 // Provide specific error message for barcode scanning
-                if let scanError = error as? ScanningError {
+                if let scanError = error as? BarcodeServiceError {
                     switch scanError {
-                    case .invalidImageType:
-                        errorMessage = "Sorry, can't scan this image. This doesn't appear to be a barcode or QR code. Please select an image with a clear barcode."
-                    case .noTextFound:
+                    case .invalidImage:
+                        errorMessage = "Sorry, can't scan this image. Invalid image format. Please select a clear image with a barcode or QR code."
+                    case .noBarcodeFound:
                         errorMessage = "Sorry, can't scan this image. No barcode or QR code was detected. Please try a clearer image."
-                    default:
-                        errorMessage = error.localizedDescription
+                    case .invalidBarcodeData:
+                        errorMessage = "Sorry, can't scan this image. The barcode data could not be processed. Please try a different code."
                     }
                 } else {
                     errorMessage = error.localizedDescription
@@ -875,207 +870,6 @@ struct EditableItemRow: View {
         isNewItem = false
         onUpdate(item)
         isEditing = false
-    }
-}
-
-struct BarcodeScannerView: View {
-    @ObservedObject var viewModel: BarcodeScannerViewModel
-    let onComplete: ([(name: String, price: Double)]) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var showingConfirmation = false
-    
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
-                if !viewModel.showingResults {
-                    // Scanning View
-                    VStack(spacing: 30) {
-                        Text("📱 Barcode Scanner")
-                            .font(.title)
-                            .fontWeight(.bold)
-                        
-                        // Mock scanner viewfinder
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.black)
-                                .frame(height: 200)
-                            
-                            if viewModel.isScanning {
-                                VStack(spacing: 15) {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        .scaleEffect(1.5)
-                                    
-                                    Text("Scanning...")
-                                        .foregroundColor(.white)
-                                        .font(.headline)
-                                    
-                                    // Animated scanning line
-                                    Rectangle()
-                                        .fill(Color.green)
-                                        .frame(height: 2)
-                                        .padding(.horizontal, 20)
-                                        .opacity(0.8)
-                                }
-                            } else {
-                                VStack {
-                                    Image(systemName: "barcode.viewfinder")
-                                        .font(.system(size: 60))
-                                        .foregroundColor(.white)
-                                    Text("Tap to scan barcode")
-                                        .foregroundColor(.white)
-                                        .font(.headline)
-                                }
-                            }
-                        }
-                        .onTapGesture {
-                            if !viewModel.isScanning {
-                                viewModel.startScanning()
-                            }
-                        }
-                        
-                        if !viewModel.isScanning {
-                            Button(action: {
-                                viewModel.startScanning()
-                            }) {
-                                HStack {
-                                    Image(systemName: "barcode")
-                                    Text("Start Scanning")
-                                }
-                                .font(.headline)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Color.purple)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                            }
-                        }
-                        
-                        Spacer()
-                    }
-                    .padding()
-                } else {
-                    // Results View
-                    VStack(alignment: .leading, spacing: 20) {
-                        HStack {
-                            Text("🎯 Barcode: \(viewModel.scannedBarcode ?? "Unknown")")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                        
-                        Text("Found \(viewModel.parsedItems.count) items:")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal)
-                        
-                        ScrollView {
-                            LazyVStack(spacing: 8) {
-                                ForEach(Array(viewModel.parsedItems.enumerated()), id: \.offset) { index, item in
-                                    let isSelected = viewModel.selectedItems.contains(index)
-                                    
-                                    Button(action: {
-                                        viewModel.toggleItemSelection(at: index)
-                                    }) {
-                                        HStack {
-                                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                                .foregroundColor(isSelected ? .purple : .gray)
-                                            
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(item.name)
-                                                    .font(.body)
-                                                    .fontWeight(.medium)
-                                                    .foregroundColor(.primary)
-                                                Text("Scanned from barcode")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                            
-                                            Spacer()
-                                            
-                                            Text(item.price, format: .currency(code: "USD"))
-                                                .font(.body)
-                                                .fontWeight(.semibold)
-                                                .foregroundColor(.green)
-                                        }
-                                        .padding()
-                                        .background(isSelected ? Color.purple.opacity(0.1) : Color(.systemGray6))
-                                        .cornerRadius(10)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                        
-                        HStack(spacing: 12) {
-                            Button("Select All") {
-                                viewModel.selectAllItems()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.purple)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
-                            
-                            Button("Clear All") {
-                                viewModel.deselectAllItems()
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color(.systemGray5))
-                            .foregroundColor(.primary)
-                            .cornerRadius(8)
-                            
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                    }
-                }
-            }
-            .navigationTitle("Barcode Scanner")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                
-                if viewModel.showingResults {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Add Items") {
-                            showingConfirmation = true
-                        }
-                        .disabled(viewModel.selectedItems.isEmpty)
-                    }
-                }
-            }
-        }
-        .alert("Add Items to Receipt?", isPresented: $showingConfirmation) {
-            Button("Add All") {
-                let selectedItems = viewModel.getSelectedItems()
-                onComplete(selectedItems)
-                dismiss()
-            }
-            
-            Button("Choose Items") {
-                // This will show the current selection interface
-                showingConfirmation = false
-            }
-            
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Do you want to add all selected items to your current receipt?")
-        }
-        .alert("Error", isPresented: $viewModel.showingError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(viewModel.errorMessage)
-        }
-        .onDisappear {
-            viewModel.reset()
-        }
     }
 }
 
