@@ -264,18 +264,3 @@ extension DateFormatter {
         return formatter
     }()
 }
-
-// MARK: - Split Participant (if not already defined)
-struct SplitParticipant: Identifiable, Hashable {
-    let id = UUID()
-    let name: String
-    var amount: Double
-    var percentage: Double?
-    var assignedItems: Set<UUID> = []
-    
-    init(name: String, amount: Double = 0.0, percentage: Double? = nil) {
-        self.name = name
-        self.amount = amount
-        self.percentage = percentage
-    }
-}
