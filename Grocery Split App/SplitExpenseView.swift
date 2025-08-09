@@ -17,8 +17,6 @@ struct EnhancedSplitExpenseView: View {
     @State private var showingMessageTemplates = false
     @State private var showingPaymentMethodSelector = false
     @State private var selectedPaymentMethodForSharing: PaymentMethod = .venmo
-    @State private var showingFinalMessage = false
-    @State private var finalShareMessage = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var itemAssignments: [UUID: Set<UUID>] = [:] // participantId -> Set of itemIds
@@ -148,19 +146,6 @@ struct EnhancedSplitExpenseView: View {
                 },
                 onCancel: {
                     showingPaymentMethodSelector = false
-                }
-            )
-        }
-        .sheet(isPresented: $showingFinalMessage) {
-            FinalMessageView(
-                message: finalShareMessage,
-                onSend: {
-                    showingFinalMessage = false
-                    // Actually send the message here
-                },
-                onEdit: {
-                    showingFinalMessage = false
-                    // Go back to edit
                 }
             )
         }
@@ -456,6 +441,24 @@ struct EnhancedSplitExpenseView: View {
                     .foregroundColor(.secondary)
             }
             .padding(.top, 4)
+            
+            // Inline message preview
+            PreviewMessageSection(
+                shareMessage: shareMessage,
+                expense: expense,
+                selectedParticipants: selectedParticipants.compactMap { participantId in
+                    participants.first { $0.id == participantId }
+                },
+                splitMethod: splitMethod,
+                selectedPaymentMethod: selectedPaymentMethodForSharing,
+                onMessageUpdate: { newMessage in
+                    shareMessage = newMessage
+                },
+                onSendMessage: {
+                    // Handle sending the message
+                    sendPaymentRequests()
+                }
+            )
         }
     }
     
@@ -555,6 +558,37 @@ struct EnhancedSplitExpenseView: View {
     }
     
     // MARK: - Helper Methods
+    
+    private func sendPaymentRequests() {
+        // Create split requests for selected participants
+        let selectedParticipantsList = selectedParticipants.compactMap { participantId in
+            participants.first { $0.id == participantId }
+        }
+        
+        for participant in selectedParticipantsList {
+            let splitRequest = SplitRequest(
+                participantName: participant.name,
+                amount: participant.amount,
+                status: .sent,
+                messageText: shareMessage,
+                priority: .normal,
+                expense: expense
+            )
+            
+            modelContext.insert(splitRequest)
+        }
+        
+        // Update expense status
+        expense.splitStatus = .sent
+        expense.lastSentDate = Date()
+        expense.message = shareMessage
+        
+        try? modelContext.save()
+        
+        // Show success message
+        alertMessage = "Payment requests sent successfully!"
+        showingAlert = true
+    }
     
     private func setupDefaultParticipants() {
         if participants.isEmpty {
@@ -709,8 +743,8 @@ struct EnhancedSplitExpenseView: View {
             return
         }
         
-        finalShareMessage = generatePaymentShareContentWithMethod(for: selectedPeople, paymentMethod: selectedPaymentMethodForSharing)
-        showingFinalMessage = true
+        // Directly send payment requests since we have inline preview now
+        sendPaymentRequests()
     }
     
     private func generateIndividualShareContent(for participant: SplitParticipant) -> String {
@@ -1153,81 +1187,194 @@ struct PaymentMethodSelectorView: View {
     }
 }
 
-// MARK: - Final Message View
-struct FinalMessageView: View {
-    let message: String
-    let onSend: () -> Void
-    let onEdit: () -> Void
-    @Environment(\.dismiss) private var dismiss
+// MARK: - Preview Message Section
+struct PreviewMessageSection: View {
+    let shareMessage: String
+    let expense: Expense
+    let selectedParticipants: [SplitParticipant]
+    let splitMethod: EnhancedSplitExpenseView.SplitMethod
+    let selectedPaymentMethod: PaymentMethod
+    let onMessageUpdate: (String) -> Void
+    let onSendMessage: () -> Void
+    
+    @State private var isExpanded = false
+    @State private var editingMessage = ""
+    @State private var isEditing = false
     
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
-                VStack(spacing: 12) {
-                    Image(systemName: "envelope.circle.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(.blue)
-                    
-                    Text("Final Message")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    
-                    Text("Check your message before sending")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isExpanded.toggle()
                 }
-                .padding()
-                
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+            }) {
+                HStack {
+                    Image(systemName: "envelope.fill")
+                        .foregroundColor(.blue)
+                    Text("Message Preview")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundColor(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 0 : 0))
+                        .animation(.easeInOut(duration: 0.3), value: isExpanded)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
+            }
+            
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Message content preview
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Preview:")
-                            .font(.headline)
+                            .font(.subheadline)
                             .foregroundColor(.secondary)
                         
-                        Text(message)
-                            .font(.body)
-                            .padding()
-                            .background(Color(.systemGray6))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                            )
-                    }
-                    .padding()
-                }
-                
-                VStack(spacing: 12) {
-                    Button(action: onSend) {
-                        HStack {
-                            Image(systemName: "paperplane.fill")
-                            Text("Send Message")
+                        if isEditing {
+                            VStack(alignment: .leading, spacing: 8) {
+                                TextEditor(text: $editingMessage)
+                                    .frame(minHeight: 120)
+                                    .padding(8)
+                                    .background(Color(.systemBackground))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.blue, lineWidth: 1)
+                                    )
+                                
+                                HStack {
+                                    Text("\(editingMessage.count) characters")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    
+                                    Spacer()
+                                    
+                                    Button("Reset") {
+                                        editingMessage = generatePreviewMessage()
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                                    
+                                    Button("Save") {
+                                        onMessageUpdate(editingMessage)
+                                        isEditing = false
+                                    }
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                                }
+                            }
+                        } else {
+                            Text(generatePreviewMessage())
+                                .font(.body)
+                                .padding(12)
+                                .background(Color(.systemGray6))
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                                )
                         }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .cornerRadius(12)
                     }
                     
-                    Button(action: onEdit) {
-                        Text("Edit Message")
-                            .font(.body)
-                            .foregroundColor(.blue)
+                    // Action buttons
+                    HStack(spacing: 12) {
+                        if !isEditing {
+                            Button(action: {
+                                editingMessage = generatePreviewMessage()
+                                isEditing = true
+                            }) {
+                                HStack {
+                                    Image(systemName: "pencil")
+                                    Text("Edit")
+                                }
+                                .font(.subheadline)
+                                .foregroundColor(.blue)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+                        } else {
+                            Button("Cancel") {
+                                isEditing = false
+                            }
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: onSendMessage) {
+                            HStack {
+                                Image(systemName: "paperplane.fill")
+                                Text("Confirm & Send")
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(selectedParticipants.isEmpty ? Color.gray : Color.blue)
+                            .cornerRadius(8)
+                        }
+                        .disabled(selectedParticipants.isEmpty)
                     }
                 }
-                .padding()
+                .padding(12)
+                .background(Color(.systemBackground))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(.systemGray4), lineWidth: 1)
+                )
             }
-            .navigationTitle("Send Payment Request")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
+        }
+    }
+    
+    private func generatePreviewMessage() -> String {
+        guard !selectedParticipants.isEmpty else {
+            return shareMessage + "\n\n(No participants selected)"
+        }
+        
+        let participantsList = selectedParticipants.map { "• \($0.name): $\(String(format: "%.2f", $0.amount))" }.joined(separator: "\n")
+        
+        return """
+        \(shareMessage)
+        
+        💰 Expense: \(expense.name)
+        📅 Date: \(expense.date.formatted(date: .abbreviated, time: .omitted))
+        💳 Paid by: \(expense.payerName)
+        
+        Amount(s) owed:
+        \(participantsList)
+        
+        \(generatePaymentInfo())
+        
+        Thanks! 😊
+        """
+    }
+    
+    private func generatePaymentInfo() -> String {
+        switch selectedPaymentMethod {
+        case .venmo:
+            return "💸 Venmo: @username"
+        case .cashapp:
+            return "💰 CashApp: $username"  
+        case .zelle:
+            return "🏦 Zelle: username@email.com"
+        case .paypal:
+            return "💙 PayPal: username@email.com"
+        case .bankTransfer:
+            return "🏦 Bank Transfer: Details available upon request"
+        case .cash:
+            return "💵 Cash: Let's meet up to settle!"
+        default:
+            return "Payment method: \(selectedPaymentMethod.rawValue)"
         }
     }
 }
