@@ -176,17 +176,6 @@ class ScanningService: ObservableObject {
         let range = NSRange(location: 0, length: trimmed.utf16.count)
         return transactionIdPattern.firstMatch(in: trimmed, options: [], range: range) != nil
     }
-        let fallbackItems = [
-            ParsedItem(name: "Coffee", price: 4.50),
-            ParsedItem(name: "Pastry", price: 3.25)
-        ]
-        return ScanResult(
-            type: .ocr,
-            sourceId: "OCR_Fallback_\(Date().timeIntervalSince1970)",
-            items: fallbackItems,
-            originalText: "Coffee 4.50\nPastry 3.25\nTotal 7.75"
-        )
-    }
     
     // MARK: - Parsing Logic
     private func parseReceiptText(_ text: String) -> [ParsedItem] {
@@ -247,6 +236,8 @@ class ScanningService: ObservableObject {
         return ignoreKeywords.contains { keyword in
             lowercaseLine.contains(keyword)
         }
+}
+
 }
 
 // MARK: - Data Models
