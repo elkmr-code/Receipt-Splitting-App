@@ -164,28 +164,15 @@ struct AddExpenseView: View {
                         }
                         .padding(.horizontal)
                         
-                        #if DEBUG
-                        Text("Debug: tap title 5× to load sample")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        #endif
+                        // Debug hint moved to bottom inset
 
-                        // Manual Entry Row (Second Row) - now full width
+                        // Manual Entry (smaller tertiary style)
                         Button(action: { showingManualEntry = true }) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 30))
-                                Text("Manual Entry")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
+                            Label("Manual Entry", systemImage: "plus")
+                                .font(.caption)
                         }
+                        .buttonStyle(.bordered)
+                        .tint(.green)
                         .accessibilityLabel(AccessibilityHelper.manualEntryButton)
                         .accessibilityHint("Add expense items by typing them in manually")
                     }
@@ -502,6 +489,14 @@ struct AddExpenseView: View {
             if let image = newImage {
                 performCodeScanFromImage(on: image)
             }
+        }
+        .overlay(alignment: .bottom) {
+            #if DEBUG
+            Text("Debug: tap title 5× to load sample")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .padding(.vertical, 4)
+            #endif
         }
         .confirmationDialog("Scan Code Options", isPresented: $showingCodeScanOptions, titleVisibility: .visible) {
             Button("Use Camera") {

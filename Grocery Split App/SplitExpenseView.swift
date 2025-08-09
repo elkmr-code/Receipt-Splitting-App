@@ -143,7 +143,7 @@ struct EnhancedSplitExpenseView: View {
             PaymentMethodSelectorView(
                 selectedMethod: $selectedPaymentMethodForSharing,
                 onConfirm: {
-                    // Build a preview message with the chosen method and show editable preview
+                    // Always regenerate preview message to reflect latest tone and method
                     let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
                     finalShareMessage = generatePaymentShareContentWithMethod(
                         for: selectedPeople.isEmpty ? participants : selectedPeople,
@@ -993,16 +993,13 @@ struct ParticipantRow: View {
                 Text("Percentage:")
                 Spacer()
                 TextField("", text: Binding(
-                    get: { participant.percentage == 0 ? "" : String(format: "%.1f", participant.percentage) },
+                    get: { participant.percentage == 0 ? "" : String(Int(participant.percentage)) },
                     set: { newValue in
-                        // Allow digits and one decimal point; interpret as percentage, not fraction
-                        let filtered = newValue.filter { "0123456789.".contains($0) }
-                        var comps = filtered.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
-                        if comps.count > 2 { comps = Array(comps.prefix(2)) }
-                        let sanitized = comps.joined(separator: ".")
-                        if let val = Double(sanitized) {
+                        // Digits only, interpret as whole percent (no decimals)
+                        let filtered = newValue.filter { "0123456789".contains($0) }
+                        if let val = Double(filtered) {
                             participant.percentage = min(max(val, 0), 100)
-                        } else if sanitized.isEmpty {
+                        } else if filtered.isEmpty {
                             participant.percentage = 0
                         }
                         participant.amount = totalAmount * (participant.percentage / 100.0)
@@ -1010,7 +1007,7 @@ struct ParticipantRow: View {
                     }
                 ))
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .keyboardType(.decimalPad)
+                    .keyboardType(.numberPad)
                     .frame(width: 80)
                     .onTapGesture {
                         // Keep empty on first tap for quick typing
