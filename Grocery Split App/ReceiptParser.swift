@@ -102,6 +102,7 @@ class ReceiptParser {
         #"\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}"#,
         #"\d{1,2}:\d{2}\s*(?:AM|PM)?"#
     ]
+}
 
 class ReceiptParser {
     
@@ -436,17 +437,8 @@ struct ReceiptMetadata {
     var phoneNumber: String?
     var receiptNumber: String?
 }
-        let lines = text.components(separatedBy: .newlines)
-        var parsedItems: [ParsedItem] = []
-        
-        for line in lines {
-            if let item = parseLineItem(line) {
-                parsedItems.append(item)
-            }
-        }
-        
-        return parsedItems
-    }
+
+class ReceiptParser {
     
     private static func parseLineItem(_ line: String) -> ParsedItem? {
         let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
