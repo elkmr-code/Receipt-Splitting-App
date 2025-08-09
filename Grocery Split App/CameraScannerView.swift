@@ -94,21 +94,25 @@ struct CameraScannerView: View {
                                     Image(systemName: scanType.icon)
                                         .font(.system(size: 40))
                                         .foregroundColor(.white)
+                                        .accessibilityHidden(true)
                                     
                                     Text("Position \(scanType.displayName.lowercased()) in the frame")
                                         .font(.headline)
                                         .foregroundColor(.white)
                                         .multilineTextAlignment(.center)
+                                        .accessibilityLabel("Position \(scanType.displayName) in the camera frame")
                                     
                                     Text("Tap to start scanning")
                                         .font(.subheadline)
                                         .foregroundColor(.white.opacity(0.8))
+                                        .accessibilityHint("Double-tap anywhere on the screen to begin scanning")
                                 }
                                 .padding()
                                 .background(Color.black.opacity(0.6))
                                 .cornerRadius(12)
                                 Spacer()
                             }
+                            .accessibilityElement(children: .combine)
                         }
                     }
                     .frame(height: 400)
@@ -174,6 +178,8 @@ struct CameraScannerView: View {
                                     .background(Color.white)
                                     .cornerRadius(12)
                                 }
+                                .accessibilityLabel("Start \(scanType.displayName) scanning")
+                                .accessibilityHint("Begins camera scanning process")
                                 
                                 // Alternative options for when camera isn't available
                                 HStack(spacing: 12) {
@@ -456,6 +462,7 @@ struct CameraScannerView: View {
                 continuation.resume(throwing: error)
             }
         }
+    }
 }
 
 // MARK: - Camera Scan Type
