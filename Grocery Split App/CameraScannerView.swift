@@ -294,13 +294,13 @@ struct CameraScannerView: View {
     }
     
     private func startBarcodeDetection() {
-        // Use AVFoundation barcode detection
+        // In production, this would use AVFoundation barcode detection
+        // For now, we'll fall back to photo picker
         Task {
-            do {
-                let result = try await cameraService.detectBarcode()
-                await completeScanning(with: result)
-            } catch {
-                await simulateScanningForFallback()
+            await MainActor.run {
+                isScanning = false
+                animationOffset = -200
+                showingPhotosPicker = true
             }
         }
     }
@@ -339,7 +339,11 @@ struct CameraScannerView: View {
             } else {
                 timer.invalidate()
                 Task {
-                    await self.completeScanning(with: self.createFallbackResult())
+                    await MainActor.run {
+                        self.isScanning = false
+                        self.animationOffset = -200
+                        self.showingPhotosPicker = true
+                    }
                 }
             }
         }
@@ -375,7 +379,7 @@ struct CameraScannerView: View {
                 let result = try await performOCR(on: firstImage)
                 await completeScanning(with: result)
             } catch {
-                await completeScanning(with: createFallbackResult())
+                await handleScanError(error)
             }
         }
     }
@@ -391,79 +395,57 @@ struct CameraScannerView: View {
                     await completeScanning(with: result)
                 }
             } catch {
-                await completeScanning(with: createFallbackResult())
+                await handleScanError(error)
             }
         }
     }
     
     private func performOCR(on image: UIImage) async throws -> ScanResult {
-        return try await withCheckedThrowingContinuation { continuation in
-            guard let cgImage = image.cgImage else {
-                continuation.resume(returning: createFallbackResult())
-                return
-            }
+        let scanningService = ScanningService()
+        return try await scanningService.performOCR(on: image)
+    }
+    
+    private func handleScanError(_ error: Error) async {
+        await MainActor.run {
+            isScanning = false
+            animationOffset = -200
+            showingResult = false
             
-            let request = VNRecognizeTextRequest { request, error in
-                if let error = error {
-                    continuation.resume(returning: self.createFallbackResult())
-                    return
-                }
-                
-                guard let observations = request.results as? [VNRecognizedTextObservation] else {
-                    continuation.resume(returning: self.createFallbackResult())
-                    return
-                }
-                
-                let recognizedText = observations.compactMap { observation in
-                    observation.topCandidates(1).first?.string
-                }.joined(separator: "\n")
-                
-                let items = self.parseReceiptText(recognizedText)
-                let result = ScanResult(
-                    type: .ocr,
-                    sourceId: "Camera_OCR_\(Date().timeIntervalSince1970)",
-                    items: items.isEmpty ? [ParsedItem(name: "Sample Item", price: 5.99)] : items,
-                    originalText: recognizedText
-                )
-                
-                continuation.resume(returning: result)
-            }
-            
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            
-            do {
-                try handler.perform([request])
-            } catch {
-                continuation.resume(returning: createFallbackResult())
-            }
+            // Show error and dismiss the scanner
+            dismiss()
         }
     }
     
     private func detectBarcodeInImage(_ image: UIImage) async throws -> ScanResult {
         return try await withCheckedThrowingContinuation { continuation in
             guard let cgImage = image.cgImage else {
-                continuation.resume(returning: createFallbackResult())
+                continuation.resume(throwing: ScanningError.invalidImage)
                 return
             }
             
             let request = VNDetectBarcodesRequest { request, error in
                 if let error = error {
-                    continuation.resume(returning: self.createFallbackResult())
+                    continuation.resume(throwing: error)
                     return
                 }
                 
                 guard let observations = request.results as? [VNBarcodeObservation],
                       let firstBarcode = observations.first,
                       let payloadString = firstBarcode.payloadStringValue else {
-                    continuation.resume(returning: self.createFallbackResult())
+                    continuation.resume(throwing: ScanningError.noReceiptFound)
                     return
                 }
                 
-                let result = self.processBarcodePayload(payloadString)
-                continuation.resume(returning: result)
+                // Use ScanningService to process the barcode payload
+                Task {
+                    do {
+                        let scanningService = ScanningService()
+                        let result = try await scanningService.scanCode(from: payloadString)
+                        continuation.resume(returning: result)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
             }
             
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
@@ -471,115 +453,9 @@ struct CameraScannerView: View {
             do {
                 try handler.perform([request])
             } catch {
-                continuation.resume(returning: createFallbackResult())
+                continuation.resume(throwing: error)
             }
         }
-    }
-    
-    private func processBarcodePayload(_ payload: String) -> ScanResult {
-        // Try to parse as JSON first
-        if let jsonData = payload.data(using: .utf8),
-           let jsonObject = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-           let id = jsonObject["id"] as? String {
-            
-            var items: [ParsedItem] = []
-            
-            if let itemsArray = jsonObject["items"] as? [[String: Any]] {
-                items = itemsArray.compactMap { itemDict in
-                    guard let name = itemDict["name"] as? String,
-                          let price = itemDict["price"] as? Double else { return nil }
-                    let qty = itemDict["qty"] as? Int ?? 1
-                    return ParsedItem(name: name, price: price, quantity: qty)
-                }
-            }
-            
-            if items.isEmpty {
-                items = [ParsedItem(name: "Scanned Item", price: 12.99)]
-            }
-            
-            return ScanResult(
-                type: .barcode,
-                sourceId: id,
-                items: items,
-                originalText: payload
-            )
-        } else {
-            // Treat as simple transaction ID
-            return ScanResult(
-                type: .barcode,
-                sourceId: payload,
-                items: [ParsedItem(name: "Transaction Item", price: 15.50)],
-                originalText: payload
-            )
-        }
-    }
-    
-    private func createFallbackResult() -> ScanResult {
-        let mockReceiptText = getMockReceipt()
-        let items = parseReceiptText(mockReceiptText)
-        let finalItems = items.isEmpty ? [ParsedItem(name: "Sample Item", price: 5.99)] : items
-        
-        return ScanResult(
-            type: scanType == .barcode ? .barcode : .ocr,
-            sourceId: "Fallback_\(Date().timeIntervalSince1970)",
-            items: finalItems,
-            originalText: mockReceiptText
-        )
-    }
-    
-    private func getMockReceipt() -> String {
-        if scanType == .barcode {
-            return """
-Starbucks Coffee 4.95
-Blueberry Muffin 3.50
-Orange Juice 2.75
-Total 11.20
-"""
-        } else {
-            return """
-Whole Foods Market
-Organic Bananas 3.99
-Greek Yogurt 5.49
-Sourdough Bread 4.25
-Avocados 2.99
-Total 16.72
-"""
-        }
-    }
-    
-    private func parseReceiptText(_ text: String) -> [ParsedItem] {
-        let lines = text.components(separatedBy: .newlines)
-        var items: [ParsedItem] = []
-        
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            // Skip empty lines and total lines
-            if trimmedLine.isEmpty || 
-               trimmedLine.lowercased().contains("total") ||
-               trimmedLine.lowercased().contains("market") {
-                continue
-            }
-            
-            // Parse line format: "Item Name Price"
-            let components = trimmedLine.components(separatedBy: " ")
-            
-            if components.count >= 2,
-               let priceString = components.last,
-               let price = Double(priceString),
-               price > 0 {
-                
-                let nameComponents = Array(components.dropLast())
-                let itemName = nameComponents.joined(separator: " ")
-                
-                if !itemName.isEmpty {
-                    items.append(ParsedItem(name: itemName, price: price))
-                }
-            }
-        }
-        
-        return items
-    }
 }
 
 // MARK: - Camera Scan Type
@@ -664,16 +540,11 @@ class CameraService: NSObject, ObservableObject {
         // Additional barcode-specific setup would go here
     }
     
-    func detectBarcode() async throws -> ScanResult {
-        // Simulate barcode detection - in real implementation would use AVFoundation
-        try await Task.sleep(for: .seconds(2))
-        
-        return ScanResult(
-            type: .barcode,
-            sourceId: "DETECTED_CODE_\(Date().timeIntervalSince1970)",
-            items: [ParsedItem(name: "Barcode Item", price: 8.99)],
-            originalText: "Barcode: 1234567890"
-        )
+    func detectBarcode() async throws -> String {
+        // TODO: Implement real barcode/QR detection using AVFoundation
+        // For now, this would need to be connected to actual camera barcode detection
+        // This is a simplified version that would need proper AVCaptureSession setup
+        throw CameraError.setupFailed
     }
     
     func stopSession() {

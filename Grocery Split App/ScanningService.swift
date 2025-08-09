@@ -10,97 +10,58 @@ class ScanningService: ObservableObject {
     @Published var scanResult: ScanResult?
     @Published var error: String?
     
-    // Mock barcode/QR code database
-    private let mockReceipts: [String: String] = [
-        "TXN12345": """
-        Milk 2.50
-        Bread 1.20
-        Apples 3.00
-        Total 6.70
-        """,
-        "TXN67890": """
-        Coca-Cola 2.50
-        Chips 3.00
-        Bananas 1.20
-        Ice Cream 4.00
-        Total 10.70
-        """,
-        "QR001": """
-        Coffee 4.50
-        Muffin 3.25
-        Orange Juice 2.75
-        Total 10.50
-        """
-    ]
-    
-    // Fallback receipt for OCR demo when image fails
-    private let fallbackReceipt = """
-    Coca-Cola 2.50
-    Chips 3.00
-    Apples 1.20
-    Sandwich 5.50
-    Water 1.00
-    Total 12.20
-    """
+
     
     // MARK: - Barcode/QR Scanning
-    func scanCode() async throws -> ScanResult {
+    func scanCode(from scannedData: String) async throws -> ScanResult {
         await MainActor.run {
             isScanning = true
             error = nil
             scanResult = nil
         }
         
-        do {
-            // Simulate scanning delay with proper error handling
-            try await Task.sleep(for: .seconds(2))
-            
-            // Use hardcoded barcode ID with better fallback
-            let barcodeID = "TXN12345"
-            
-            await MainActor.run {
+        defer {
+            Task { @MainActor in
                 isScanning = false
             }
-            
-            if let receiptText = mockReceipts[barcodeID] {
-                let items = parseReceiptText(receiptText)
-                let result = ScanResult(
-                    type: .barcode,
-                    sourceId: barcodeID,
-                    items: items.isEmpty ? [ParsedItem(name: "Sample Item", price: 5.99)] : items,
-                    originalText: receiptText
-                )
-                
-                await MainActor.run {
-                    self.scanResult = result
-                }
-                
-                return result
-            } else {
-                // Provide fallback result instead of throwing error
-                let fallbackItems = [
-                    ParsedItem(name: "Coffee", price: 4.50),
-                    ParsedItem(name: "Muffin", price: 3.25)
-                ]
-                let result = ScanResult(
-                    type: .barcode,
-                    sourceId: barcodeID,
-                    items: fallbackItems,
-                    originalText: "Coffee 4.50\nMuffin 3.25\nTotal 7.75"
-                )
-                
-                await MainActor.run {
-                    self.scanResult = result
-                }
-                
-                return result
-            }
-        } catch {
-            await MainActor.run {
-                isScanning = false
-            }
-            throw ScanningError.scanningFailed
         }
+        
+        // Parse the scanned data - could be QR JSON or simple transaction ID
+        let result: ScanResult
+        
+        // Try to parse as JSON first (structured QR code)
+        if let jsonData = scannedData.data(using: .utf8),
+           let qrData = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+           let receiptId = qrData["receiptId"] as? String {
+            
+            // Structured QR code with JSON data
+            let items = parseQRItems(from: qrData)
+            result = ScanResult(
+                type: .barcode,
+                sourceId: receiptId,
+                items: items,
+                originalText: scannedData
+            )
+            
+        } else if isValidTransactionId(scannedData) {
+            // Simple transaction ID - treat as receipt identifier
+            result = ScanResult(
+                type: .barcode,
+                sourceId: scannedData.trimmingCharacters(in: .whitespacesAndNewlines),
+                items: [], // Items will need to be entered manually or retrieved from external service
+                originalText: scannedData
+            )
+            
+        } else {
+            // Unrecognized format
+            throw ScanningError.noReceiptFound
+        }
+        
+        await MainActor.run {
+            self.scanResult = result
+        }
+        
+        return result
     }
     
     // MARK: - OCR Scanning
@@ -117,17 +78,14 @@ class ScanningService: ObservableObject {
                     self.isScanning = false
                     
                     if let error = error {
-                        // Provide fallback instead of immediately failing
-                        let fallbackResult = self.createFallbackOCRResult()
-                        self.scanResult = fallbackResult
-                        continuation.resume(returning: fallbackResult)
+                        self.error = "OCR failed: \(error.localizedDescription)"
+                        continuation.resume(throwing: ScanningError.ocrFailed)
                         return
                     }
                     
                     guard let observations = request.results as? [VNRecognizedTextObservation] else {
-                        let fallbackResult = self.createFallbackOCRResult()
-                        self.scanResult = fallbackResult
-                        continuation.resume(returning: fallbackResult)
+                        self.error = "No text detected in image"
+                        continuation.resume(throwing: ScanningError.noTextFound)
                         return
                     }
                     
@@ -135,48 +93,25 @@ class ScanningService: ObservableObject {
                         observation.topCandidates(1).first?.string
                     }.joined(separator: "\n")
                     
-                    let items: [ParsedItem]
-                    let finalText: String
-                    
-                    if recognizedText.isEmpty {
-                        // Use fallback instead of error
-                        let fallbackResult = self.createFallbackOCRResult()
-                        self.scanResult = fallbackResult
-                        continuation.resume(returning: fallbackResult)
+                    if recognizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        self.error = "No readable text found"
+                        continuation.resume(throwing: ScanningError.noTextFound)
                         return
-                    } else {
-                        // Check if image seems to contain receipt/barcode content
-                        let isValidReceiptImage = self.validateReceiptImage(recognizedText)
-                        
-                        if !isValidReceiptImage {
-                            // Try to parse anyway but use fallback if nothing found
-                            items = self.parseReceiptText(recognizedText)
-                            if items.isEmpty {
-                                let fallbackResult = self.createFallbackOCRResult()
-                                self.scanResult = fallbackResult
-                                continuation.resume(returning: fallbackResult)
-                                return
-                            }
-                            finalText = recognizedText
-                        } else {
-                            items = self.parseReceiptText(recognizedText)
-                            finalText = recognizedText
-                            
-                            // If still no items found after parsing valid text, use fallback
-                            if items.isEmpty {
-                                let fallbackResult = self.createFallbackOCRResult()
-                                self.scanResult = fallbackResult
-                                continuation.resume(returning: fallbackResult)
-                                return
-                            }
-                        }
+                    }
+                    
+                    let items = self.parseReceiptText(recognizedText)
+                    
+                    if items.isEmpty {
+                        self.error = "No valid items found in text"
+                        continuation.resume(throwing: ScanningError.noItemsFound)
+                        return
                     }
                     
                     let result = ScanResult(
                         type: .ocr,
                         sourceId: "OCR_\(Date().timeIntervalSince1970)",
                         items: items,
-                        originalText: finalText
+                        originalText: recognizedText
                     )
                     
                     self.scanResult = result
@@ -191,10 +126,9 @@ class ScanningService: ObservableObject {
             guard let cgImage = image.cgImage else {
                 Task { @MainActor in
                     self.isScanning = false
-                    let fallbackResult = self.createFallbackOCRResult()
-                    self.scanResult = fallbackResult
-                    continuation.resume(returning: fallbackResult)
+                    self.error = "Invalid image format"
                 }
+                continuation.resume(throwing: ScanningError.invalidImage)
                 return
             }
             
@@ -205,15 +139,43 @@ class ScanningService: ObservableObject {
             } catch {
                 Task { @MainActor in
                     self.isScanning = false
-                    let fallbackResult = self.createFallbackOCRResult()
-                    self.scanResult = fallbackResult
-                    continuation.resume(returning: fallbackResult)
+                    self.error = "OCR processing failed: \(error.localizedDescription)"
                 }
+                continuation.resume(throwing: ScanningError.ocrFailed)
             }
         }
     }
     
-    private func createFallbackOCRResult() -> ScanResult {
+    // MARK: - Helper Methods for QR Processing
+    private func parseQRItems(from qrData: [String: Any]) -> [ParsedItem] {
+        var items: [ParsedItem] = []
+        
+        // Look for items array in QR JSON
+        if let itemsArray = qrData["items"] as? [[String: Any]] {
+            for itemData in itemsArray {
+                if let name = itemData["name"] as? String,
+                   let price = itemData["price"] as? Double {
+                    items.append(ParsedItem(name: name, price: price))
+                }
+            }
+        }
+        
+        return items
+    }
+    
+    private func isValidTransactionId(_ data: String) -> Bool {
+        let trimmed = data.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Basic validation for transaction IDs
+        // Could be numeric, alphanumeric, or specific patterns
+        let transactionIdPattern = try! NSRegularExpression(
+            pattern: #"^[A-Z0-9]{3,20}$"#,
+            options: []
+        )
+        
+        let range = NSRange(location: 0, length: trimmed.utf16.count)
+        return transactionIdPattern.firstMatch(in: trimmed, options: [], range: range) != nil
+    }
         let fallbackItems = [
             ParsedItem(name: "Coffee", price: 4.50),
             ParsedItem(name: "Pastry", price: 3.25)
@@ -285,32 +247,6 @@ class ScanningService: ObservableObject {
         return ignoreKeywords.contains { keyword in
             lowercaseLine.contains(keyword)
         }
-    }
-    
-    private func validateReceiptImage(_ text: String) -> Bool {
-        let lowercaseText = text.lowercased()
-        
-        // Keywords that suggest this is a receipt or purchase-related document
-        let receiptKeywords = [
-            "total", "subtotal", "tax", "receipt", "purchase", "sale", "store", "shop", "market",
-            "price", "cost", "$", "usd", "amount", "qty", "quantity", "item", "product",
-            "visa", "mastercard", "cash", "card", "payment", "paid", "change", "tender",
-            "walmart", "target", "costco", "safeway", "kroger", "publix", "whole foods",
-            "starbucks", "mcdonald", "subway", "pizza", "restaurant", "cafe", "coffee"
-        ]
-        
-        // Check if text contains currency symbols or numbers that look like prices
-        let hasNumbers = text.range(of: #"\d+\.\d{2}"#, options: .regularExpression) != nil
-        let hasCurrency = text.contains("$") || text.contains("USD") || text.contains("¢")
-        
-        // Check for receipt-like keywords
-        let hasReceiptKeywords = receiptKeywords.contains { keyword in
-            lowercaseText.contains(keyword)
-        }
-        
-        // Must have either currency/numbers OR receipt keywords
-        return hasNumbers || hasCurrency || hasReceiptKeywords
-    }
 }
 
 // MARK: - Data Models

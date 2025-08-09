@@ -75,52 +75,7 @@ class OCRService: ObservableObject {
                 continuation.resume(throwing: error)
             }
         }
-    }
-    
-    // Simulate OCR processing with delay for demo purposes
-    func simulateOCRProcessing() async throws -> String {
-        DispatchQueue.main.async {
-            self.isProcessing = true
-        }
-        
-        // Simulate processing time
-        try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
-        
-        DispatchQueue.main.async {
-            self.isProcessing = false
-        }
-        
-        // Return sample receipt text
-        return getSampleReceiptText()
-    }
-    
-    private func getSampleReceiptText() -> String {
-        return """
-        WHOLE FOODS MARKET
-        123 Main Street
-        San Francisco, CA 94105
-        
-        Date: 08/04/2025
-        Time: 2:45 PM
-        
-        Organic Bananas          $3.99
-        Almond Milk 64oz         $4.59
-        Greek Yogurt             $5.49
-        Sourdough Bread          $4.29
-        Chicken Breast 2lb       $12.99
-        Baby Spinach             $3.99
-        Cherry Tomatoes          $4.99
-        Olive Oil                $8.99
-        Pasta Penne              $2.49
-        Parmesan Cheese          $7.99
-        
-        Subtotal:               $59.80
-        Tax:                     $4.78
-        Total:                  $64.58
-        
-        Thank you for shopping!
-        """
-    }
+}
 }
 
 enum OCRError: Error, LocalizedError {
