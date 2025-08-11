@@ -5,6 +5,7 @@ struct ExpenseListView: View {
     @Query(sort: \Expense.date, order: .reverse) var expenses: [Expense]
     @Environment(\.modelContext) private var modelContext
     @State private var showingAddExpense = false
+    @State private var showingDashboard = false
     
     var body: some View {
         NavigationStack {
@@ -59,6 +60,11 @@ struct ExpenseListView: View {
                         Image(systemName: "plus")
                     }
                 }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: { showingDashboard = true }) {
+                        Image(systemName: "rectangle.grid.2x2")
+                    }
+                }
                 
                 if !expenses.isEmpty {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -68,6 +74,9 @@ struct ExpenseListView: View {
             }
             .sheet(isPresented: $showingAddExpense) {
                 AddExpenseView()
+            }
+            .sheet(isPresented: $showingDashboard) {
+                DashboardView()
             }
         }
     }

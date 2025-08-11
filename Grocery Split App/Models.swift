@@ -103,6 +103,7 @@ class SplitRequest {
     var messageText: String
     var priority: RequestPriority
     var dueDate: Date?
+    var nextSendDate: Date?
     var createdDate: Date
     var expense: Expense?
     
@@ -113,6 +114,7 @@ class SplitRequest {
          messageText: String = "",
          priority: RequestPriority = .normal,
          dueDate: Date? = nil,
+         nextSendDate: Date? = nil,
          createdDate: Date = Date(),
          expense: Expense? = nil) {
         self.id = id
@@ -122,6 +124,7 @@ class SplitRequest {
         self.messageText = messageText
         self.priority = priority
         self.dueDate = dueDate
+        self.nextSendDate = nextSendDate
         self.createdDate = createdDate
         self.expense = expense
     }
