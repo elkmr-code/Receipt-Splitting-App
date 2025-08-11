@@ -676,11 +676,11 @@ struct DocumentCameraView: UIViewControllerRepresentable {
     
     func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}
     
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+    func makeCoordinator() -> DocumentCameraCoordinator {
+        DocumentCameraCoordinator(self)
     }
     
-    class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
+    class DocumentCameraCoordinator: NSObject, VNDocumentCameraViewControllerDelegate {
         let parent: DocumentCameraView
         
         init(_ parent: DocumentCameraView) {
@@ -723,11 +723,11 @@ struct PhotosPickerView: UIViewControllerRepresentable {
     
     func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
     
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+    func makeCoordinator() -> PhotoPickerCoordinator {
+        PhotoPickerCoordinator(self)
     }
     
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    class PhotoPickerCoordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
         let parent: PhotosPickerView
         
         init(_ parent: PhotosPickerView) {
