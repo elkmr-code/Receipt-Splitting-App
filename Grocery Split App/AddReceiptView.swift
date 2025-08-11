@@ -1040,10 +1040,10 @@ struct EditableItemRow: View {
     private var swipeGesture: some Gesture {
         DragGesture()
             .onChanged { value in
-                dragOffset = value.translation.x
+                dragOffset = value.translation.width
             }
             .onEnded { value in
-                let swipeDistance = value.translation.x
+                let swipeDistance = value.translation.width
                 
                 withAnimation(.easeOut(duration: 0.3)) {
                     if swipeDistance > editThreshold {

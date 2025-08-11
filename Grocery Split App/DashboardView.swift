@@ -11,6 +11,10 @@ struct DashboardView: View {
     @State private var purgedCount = 0
     @State private var selectAll = false
     @State private var isSelectionMode = false
+    @State private var showingScheduleSheet = false
+    @State private var scheduledRequests: [ScheduledSplitRequest] = []
+    @State private var showingScheduleSuccess = false
+    @State private var scheduleSuccessMessage = ""
 
     var filtered: [SplitRequest] {
         requests.filter { filter.matches($0) }
@@ -50,6 +54,11 @@ struct DashboardView: View {
                     Spacer()
                 }
                 
+                // Scheduled Messages Queue
+                if !scheduledRequests.isEmpty {
+                    scheduleQueueSection
+                }
+                
                 if filtered.isEmpty {
                     ContentUnavailableView("No records", systemImage: "tray")
                 } else {
@@ -63,6 +72,7 @@ struct DashboardView: View {
             }
             .padding(.top, 8)
             .navigationTitle("Dashboard")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) { 
                     Button("Done") { 
@@ -75,20 +85,94 @@ struct DashboardView: View {
             .safeAreaInset(edge: .bottom) {
                 if !selection.isEmpty {
                     HStack {
-                        Button("Repaid") { bulkUpdate(.paid) }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
                         Button("Unsettled") { bulkMarkUnsettled() }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.borderedProminent)
                             .tint(.red)
+                        Button("Repaid") { bulkUpdate(.paid) }
+                            .buttonStyle(.bordered)
+                            .tint(.green)
                         Spacer()
+                        Button("Schedule Send") { showingScheduleSheet = true }
+                            .buttonStyle(.bordered)
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 8)
                     .background(.ultraThinMaterial)
                 }
             }
+            .sheet(isPresented: $showingScheduleSheet) {
+                ScheduleModalView(
+                    selectedRequests: selection,
+                    allRequests: filtered,
+                    onSchedule: { scheduledRequest in
+                        scheduledRequests.append(scheduledRequest)
+                        showingScheduleSheet = false
+                        scheduleSuccessMessage = "Successfully scheduled messages for \\(scheduledRequest.participants.count) participant(s) on \\(scheduledRequest.scheduledDate.formatted(date: .abbreviated, time: .shortened))"
+                        showingScheduleSuccess = true
+                    }
+                )
+            }
+            .alert("Schedule Success", isPresented: $showingScheduleSuccess) { 
+                Button("OK", role: .cancel) {} 
+            } message: { 
+                Text(scheduleSuccessMessage) 
+            }
         }
+    }
+    
+    private var scheduleQueueSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Scheduled Messages")
+                .font(.headline)
+                .padding(.horizontal)
+            
+            LazyVStack(spacing: 8) {
+                ForEach(scheduledRequests) { scheduledRequest in
+                    scheduledRequestRow(scheduledRequest)
+                }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 8)
+        .background(Color(.systemGray6).opacity(0.3))
+        .cornerRadius(12)
+        .padding(.horizontal)
+    }
+    
+    private func scheduledRequestRow(_ scheduledRequest: ScheduledSplitRequest) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(scheduledRequest.participants.joined(separator: ", "))
+                    .font(.body)
+                    .fontWeight(.medium)
+                
+                Text(scheduledRequest.scheduledDate, style: .date)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Text(scheduledRequest.scheduledDate, style: .time)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            Button(action: {
+                deleteScheduledRequest(scheduledRequest)
+            }) {
+                Image(systemName: "trash")
+                    .foregroundColor(.red)
+                    .font(.body)
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(8)
+        .shadow(radius: 1)
+    }
+    
+    private func deleteScheduledRequest(_ scheduledRequest: ScheduledSplitRequest) {
+        scheduledRequests.removeAll { $0.id == scheduledRequest.id }
     }
 
     private var filterBar: some View {
@@ -304,6 +388,21 @@ enum DashboardFilter: CaseIterable {
         case .all:
             return true
         }
+    }
+}
+
+struct ScheduledSplitRequest: Identifiable {
+    let id = UUID()
+    let splitRequestIds: Set<UUID>
+    let scheduledDate: Date
+    let message: String
+    var participants: [String]
+    
+    init(splitRequestIds: Set<UUID>, scheduledDate: Date, message: String, participants: [String]) {
+        self.splitRequestIds = splitRequestIds
+        self.scheduledDate = scheduledDate
+        self.message = message
+        self.participants = participants
     }
 }
 

@@ -342,7 +342,7 @@ struct EnhancedSplitExpenseView: View {
                 Spacer()
             }
             
-            let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.id == participants.first?.id }
             
             if validParticipants.isEmpty {
                 VStack(spacing: 8) {
@@ -371,27 +371,29 @@ struct EnhancedSplitExpenseView: View {
     
     private func participantPreviewRow(_ participant: SplitParticipant) -> some View {
         let isValidParticipant = !participant.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isFirstParticipant = participant.id == participants.first?.id
+        let shouldShowAmount = isValidParticipant || isFirstParticipant
         
         return HStack {
-            Text(participant.name)
+            Text(participant.name.isEmpty ? "Payer (You)" : participant.name)
                 .font(.body)
                 .foregroundColor(isValidParticipant ? .primary : .secondary)
             Spacer()
             Text("$\(participant.amount, specifier: "%.2f")")
                 .font(.body)
                 .fontWeight(.semibold)
-                .foregroundColor(isValidParticipant ? .green : .gray)
+                .foregroundColor(shouldShowAmount ? (isValidParticipant ? .green : .gray.opacity(0.7)) : .gray)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(Color(.systemGray6))
         .cornerRadius(8)
-        .opacity(isValidParticipant ? 1.0 : 0.6)
+        .opacity(shouldShowAmount ? (isValidParticipant ? 1.0 : 0.7) : 0.6)
     }
     
     private var splitValidationView: some View {
         Group {
-            let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.id == participants.first?.id }
             let totalSplit = validParticipants.reduce(0) { $0 + $1.amount }
             let difference = expense.totalCost - totalSplit
             
@@ -663,17 +665,17 @@ struct EnhancedSplitExpenseView: View {
     private func recalculateSplit() {
         guard !participants.isEmpty && expense.totalCost > 0 else { return }
         
-        // Filter out participants with invalid names (empty or just whitespace)
-        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        // Include first participant (payer) even if name is blank, plus all named participants
+        let countableParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.id == participants.first?.id }
         
-        guard !validParticipants.isEmpty else { return }
+        guard !countableParticipants.isEmpty else { return }
         
         switch splitMethod {
         case .evenSplit:
-            let amountPerPerson = expense.totalCost / Double(validParticipants.count)
-            let percentagePerPerson = 100.0 / Double(validParticipants.count)
+            let amountPerPerson = expense.totalCost / Double(countableParticipants.count)
+            let percentagePerPerson = 100.0 / Double(countableParticipants.count)
             for i in participants.indices {
-                if !participants[i].name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if !participants[i].name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || participants[i].id == participants.first?.id {
                     participants[i].amount = amountPerPerson
                     participants[i].percentage = percentagePerPerson
                 } else {
