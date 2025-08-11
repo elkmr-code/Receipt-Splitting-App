@@ -7,6 +7,9 @@ struct ItemSelectionView: View {
     let onConfirm: ([ParsedItem]) -> Void
     @Environment(\.dismiss) private var dismiss
     
+    // Add local state to ensure selection works properly
+    @State private var localSelectedItems: Set<UUID> = []
+    
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
@@ -57,7 +60,10 @@ struct ItemSelectionView: View {
                 // Selection controls
                 HStack(spacing: 16) {
                     Button("Select All") {
-                        selectedItems = Set(scanResult.items.map { $0.id })
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            localSelectedItems = Set(scanResult.items.map { $0.id })
+                            selectedItems = localSelectedItems
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -66,7 +72,10 @@ struct ItemSelectionView: View {
                     .cornerRadius(8)
                     
                     Button("Clear All") {
-                        selectedItems.removeAll()
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            localSelectedItems.removeAll()
+                            selectedItems.removeAll()
+                        }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -76,59 +85,39 @@ struct ItemSelectionView: View {
                     
                     Spacer()
                     
-                    Text("\(selectedItems.count) selected")
+                    Text("\(localSelectedItems.count) selected")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
                 .padding(.horizontal)
                 
-                // Items list
+                // Items list with improved selection handling
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(scanResult.items) { item in
-                            let isSelected = selectedItems.contains(item.id)
-                            
-                            Button(action: {
-                                if isSelected {
-                                    selectedItems.remove(item.id)
-                                } else {
-                                    selectedItems.insert(item.id)
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                        .foregroundColor(isSelected ? .blue : .gray)
-                                        .font(.title3)
-                                    
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.name)
-                                            .font(.body)
-                                            .fontWeight(.medium)
-                                            .foregroundColor(.primary)
-                                        Text("From \(scanResult.type.displayName.lowercased())")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                            ItemSelectionRow(
+                                item: item,
+                                scanType: scanResult.type,
+                                isSelected: localSelectedItems.contains(item.id),
+                                onToggle: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        if localSelectedItems.contains(item.id) {
+                                            localSelectedItems.remove(item.id)
+                                        } else {
+                                            localSelectedItems.insert(item.id)
+                                        }
+                                        selectedItems = localSelectedItems
                                     }
-                                    
-                                    Spacer()
-                                    
-                                    Text(item.price, format: .currency(code: "USD"))
-                                        .font(.body)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.green)
                                 }
-                                .padding()
-                                .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
-                                .cornerRadius(10)
-                            }
+                            )
                         }
                     }
                     .padding(.horizontal)
                 }
                 
                 // Total for selected items
-                if !selectedItems.isEmpty {
-                    let selectedTotal = scanResult.items.filter { selectedItems.contains($0.id) }
+                if !localSelectedItems.isEmpty {
+                    let selectedTotal = scanResult.items.filter { localSelectedItems.contains($0.id) }
                         .reduce(0) { $0 + $1.totalPrice }
                     
                     HStack {
@@ -144,6 +133,7 @@ struct ItemSelectionView: View {
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
                     .padding(.horizontal)
+                    .transition(.opacity.combined(with: .scale))
                 }
                 
                 
@@ -158,17 +148,95 @@ struct ItemSelectionView: View {
                 }
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add Items") {
-                        let itemsToAdd = scanResult.items.filter { selectedItems.contains($0.id) }
+                    Button("Add Items (\(localSelectedItems.count))") {
+                        let itemsToAdd = scanResult.items.filter { localSelectedItems.contains($0.id) }
                         onConfirm(itemsToAdd)
                         dismiss()
                     }
-                    .disabled(selectedItems.isEmpty)
+                    .disabled(localSelectedItems.isEmpty)
                     .fontWeight(.semibold)
                 }
             }
         }
         .background(Color(.systemBackground))
+        .onAppear {
+            // Initialize local state with bound state
+            localSelectedItems = selectedItems
+        }
+    }
+}
+
+// MARK: - Item Selection Row Component
+struct ItemSelectionRow: View {
+    let item: ParsedItem
+    let scanType: ScanType
+    let isSelected: Bool
+    let onToggle: () -> Void
+    
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 12) {
+                // Selection indicator with animation
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isSelected ? .blue : .gray)
+                    .font(.title3)
+                    .scaleEffect(isSelected ? 1.1 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.name)
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                        .multilineTextAlignment(.leading)
+                    
+                    HStack {
+                        Text("From \(scanType.displayName.lowercased())")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        if item.quantity > 1 {
+                            Text("• Qty: \(item.quantity)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(item.totalPrice, format: .currency(code: "USD"))
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.green)
+                    
+                    if item.quantity > 1 {
+                        Text("\(item.price, format: .currency(code: "USD")) each")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding()
+            .background(
+                Group {
+                    if isSelected {
+                        Color.blue.opacity(0.1)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                            )
+                    } else {
+                        Color(.systemGray6)
+                    }
+                }
+            )
+            .cornerRadius(10)
+        }
+        .buttonStyle(PlainButtonStyle()) // Prevent default button highlighting
     }
 }
 

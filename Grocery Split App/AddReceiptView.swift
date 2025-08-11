@@ -561,8 +561,8 @@ struct AddExpenseView: View {
                 let ocrService = OCRService()
                 let recognizedText = try await ocrService.recognizeText(from: selectedImage)
                 
-                let parser = ReceiptParser()
-                let items = parser.parseItems(from: recognizedText)
+                let parseResult = ReceiptParser.parseReceiptTextEnhanced(recognizedText)
+                let items = parseResult.items.map { ($0.name, $0.totalPrice) }
                 
                 await MainActor.run {
                     if items.isEmpty {
@@ -576,6 +576,12 @@ struct AddExpenseView: View {
                     } else {
                         parsedItems = items
                     }
+                    
+                    // Auto-populate expense name with store name if available and current name is empty
+                    if expenseName.isEmpty, let storeName = parseResult.metadata.storeName {
+                        expenseName = storeName
+                    }
+                    
                     showingParsedItems = true
                     isProcessing = false
                 }
@@ -642,6 +648,18 @@ struct AddExpenseView: View {
         Task {
             do {
                 let result = try await scanningService.performOCR(on: image)
+                
+                // Auto-populate expense name if empty and we have store metadata
+                if expenseName.isEmpty {
+                    // We need to parse the OCR result again to get metadata 
+                    let parseResult = ReceiptParser.parseReceiptTextEnhanced(result.originalText)
+                    if let storeName = parseResult.metadata.storeName {
+                        await MainActor.run {
+                            expenseName = storeName
+                        }
+                    }
+                }
+                
                 currentScanResult = result
             } catch {
                 let errorInfo = ErrorHandler.handle(
