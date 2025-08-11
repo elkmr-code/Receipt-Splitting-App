@@ -143,12 +143,26 @@ struct EnhancedSplitExpenseView: View {
             PaymentMethodSelectorView(
                 selectedMethod: $selectedPaymentMethodForSharing,
                 onConfirm: {
-                    // Always regenerate preview message to reflect latest tone and method
+                    // FIXED: Preserve existing message content and only update payment method
+                    // instead of clearing the entire template
                     let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
-                    finalShareMessage = generatePaymentShareContentWithMethod(
-                        for: selectedPeople.isEmpty ? participants : selectedPeople,
-                        paymentMethod: selectedPaymentMethodForSharing
-                    )
+                    let peopleToUse = selectedPeople.isEmpty ? participants : selectedPeople
+                    
+                    // Preserve the current message content if it exists
+                    if finalShareMessage.isEmpty {
+                        // First time - generate full message
+                        finalShareMessage = generatePaymentShareContentWithMethod(
+                            for: peopleToUse,
+                            paymentMethod: selectedPaymentMethodForSharing
+                        )
+                    } else {
+                        // Update only payment method section, preserve rest of message
+                        finalShareMessage = updatePaymentMethodInMessage(
+                            existingMessage: finalShareMessage,
+                            newPaymentMethod: selectedPaymentMethodForSharing,
+                            participants: peopleToUse
+                        )
+                    }
                     showingPaymentMethodSelector = false
                     showingFinalMessagePreview = true
                 },
@@ -866,6 +880,55 @@ struct EnhancedSplitExpenseView: View {
         default:
             return "Payment method: \(method.rawValue)"
         }
+    }
+    
+    // MARK: - Payment Method Template Preservation
+    private func updatePaymentMethodInMessage(existingMessage: String, newPaymentMethod: PaymentMethod, participants: [SplitParticipant]) -> String {
+        // Preserve the existing message structure and only update payment information
+        let lines = existingMessage.components(separatedBy: .newlines)
+        var updatedLines: [String] = []
+        var foundPaymentSection = false
+        var skipPaymentLines = false
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Detect existing payment method lines to replace
+            if trimmedLine.lowercased().contains("payment via") ||
+               trimmedLine.lowercased().contains("venmo:") ||
+               trimmedLine.lowercased().contains("cashapp:") ||
+               trimmedLine.lowercased().contains("zelle:") ||
+               trimmedLine.lowercased().contains("paypal:") ||
+               trimmedLine.lowercased().contains("bank transfer") ||
+               trimmedLine.lowercased().contains("cash payment") {
+                
+                // Replace with new payment method info (only once)
+                if !foundPaymentSection {
+                    updatedLines.append(generatePaymentInfo(for: newPaymentMethod))
+                    foundPaymentSection = true
+                }
+                // Skip the old payment line
+                continue
+            }
+            
+            // Keep all other lines as-is
+            updatedLines.append(line)
+        }
+        
+        // If no payment section was found, add it before the closing
+        if !foundPaymentSection {
+            // Insert payment info before "Thanks!" or other closing lines
+            if let thanksIndex = updatedLines.lastIndex(where: { $0.lowercased().contains("thanks") || $0.lowercased().contains("no rush") }) {
+                updatedLines.insert("", at: thanksIndex)
+                updatedLines.insert(generatePaymentInfo(for: newPaymentMethod), at: thanksIndex + 1)
+            } else {
+                // Append at the end if no closing found
+                updatedLines.append("")
+                updatedLines.append(generatePaymentInfo(for: newPaymentMethod))
+            }
+        }
+        
+        return updatedLines.joined(separator: "\n")
     }
     
     private func generatePaymentInstructions() -> String {

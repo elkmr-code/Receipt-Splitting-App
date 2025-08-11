@@ -844,6 +844,12 @@ struct EditableItemRow: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var isNewItem = true
+    @State private var swipeOffset: CGFloat = 0
+    @State private var dragOffset: CGFloat = 0
+    
+    // Swipe thresholds
+    private let editThreshold: CGFloat = 80
+    private let deleteThreshold: CGFloat = -80
     
     init(item: (name: String, price: Double), onUpdate: @escaping ((name: String, price: Double)) -> Void, onDelete: @escaping () -> Void) {
         self._item = State(initialValue: item)
@@ -863,97 +869,103 @@ struct EditableItemRow: View {
     var body: some View {
         HStack {
             if isEditing {
-                VStack(spacing: 8) {
-                    TextField("Item name", text: $item.name)
+                editingContent
+            } else {
+                displayContent
+            }
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(8)
+        .offset(x: dragOffset)
+        .animation(.interactiveSpring(), value: dragOffset)
+        .background(
+            swipeBackgroundView
+                .cornerRadius(8)
+        )
+        .gesture(
+            isEditing ? nil : swipeGesture
+        )
+        .onReceive(NotificationCenter.default.publisher(for: .commitEditableItems)) { _ in
+            validateAndSave()
+        }
+        .alert("Invalid Price", isPresented: $showingAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+    
+    private var editingContent: some View {
+        HStack {
+            VStack(spacing: 8) {
+                TextField("Item name", text: $item.name)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .onSubmit {
+                        if !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            isNewItem = false
+                        }
+                    }
+                
+                HStack {
+                    Text("$")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                    
+                    TextField("0.00", text: $priceText)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .onSubmit {
-                            if !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        .keyboardType(.decimalPad)
+                        .onTapGesture {
+                            // Clear the field when user first taps if it's a new item
+                            if isNewItem && priceText == "0.00" {
+                                priceText = ""
+                            }
+                        }
+                        .onChange(of: priceText) { _, newValue in
+                            // Remove any existing dollar signs and format
+                            let cleanValue = newValue.replacingOccurrences(of: "$", with: "")
+                                .replacingOccurrences(of: ",", with: "")
+                            
+                            // Only allow digits and one decimal point
+                            let filtered = cleanValue.filter { "0123456789.".contains($0) }
+                            
+                            // Ensure only one decimal point
+                            let components = filtered.components(separatedBy: ".")
+                            if components.count > 2 {
+                                // If more than one decimal point, keep only the first one
+                                priceText = components[0] + "." + components[1]
+                            } else {
+                                priceText = filtered
+                            }
+                            
+                            // Mark as no longer new item once user starts typing
+                            if !priceText.isEmpty {
                                 isNewItem = false
                             }
                         }
-                    
-                    HStack {
-                        Text("$")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                        
-                        TextField("0.00", text: $priceText)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .keyboardType(.decimalPad)
-                            .onTapGesture {
-                                // Clear the field when user first taps if it's a new item
-                                if isNewItem && priceText == "0.00" {
-                                    priceText = ""
-                                }
-                            }
-                            .onChange(of: priceText) { _, newValue in
-                                // Remove any existing dollar signs and format
-                                let cleanValue = newValue.replacingOccurrences(of: "$", with: "")
-                                    .replacingOccurrences(of: ",", with: "")
-                                
-                                // Only allow digits and one decimal point
-                                let filtered = cleanValue.filter { "0123456789.".contains($0) }
-                                
-                                // Ensure only one decimal point
-                                let components = filtered.components(separatedBy: ".")
-                                if components.count > 2 {
-                                    // If more than one decimal point, keep only the first one
-                                    priceText = components[0] + "." + components[1]
-                                } else {
-                                    priceText = filtered
-                                }
-                                
-                                // Mark as no longer new item once user starts typing
-                                if !priceText.isEmpty {
-                                    isNewItem = false
-                                }
-                            }
-                            .onSubmit {
-                                validateAndSave()
-                            }
-                    }
-                }
-                
-                VStack(spacing: 4) {
-                    Button("Save") {
-                        validateAndSave()
-                    }
-                    .foregroundColor(.green)
-                    .font(.caption)
-                    
-                    Button("Cancel") {
-                        if isNewItem {
-                            onDelete() // Delete if it's a new item and user cancels
-                        } else {
-                            priceText = String(format: "%.2f", item.price)
-                            isEditing = false
+                        .onSubmit {
+                            validateAndSave()
                         }
-                    }
-                    .foregroundColor(.red)
-                    .font(.caption)
                 }
-            } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.name)
-                        .font(.body)
-                    Text(item.price, format: .currency(code: "USD"))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            }
+            
+            VStack(spacing: 4) {
+                Button("Save") {
+                    validateAndSave()
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(AccessibilityHelper.expenseItemLabel(name: item.name, price: item.price))
-                .accessibilityHint(AccessibilityHelper.editHint)
-                
-                Spacer()
-                
-                Button("Edit") {
-                    priceText = String(format: "%.2f", item.price)
-                    isEditing = true
-                }
-                .foregroundColor(.blue)
+                .foregroundColor(.green)
                 .font(.caption)
-                .accessibilityLabel(AccessibilityHelper.editItemButton)
-                .accessibilityHint("Double-tap to edit this item's name and price")
+                
+                Button("Cancel") {
+                    if isNewItem {
+                        onDelete() // Delete if it's a new item and user cancels
+                    } else {
+                        priceText = String(format: "%.2f", item.price)
+                        isEditing = false
+                    }
+                }
+                .foregroundColor(.red)
+                .font(.caption)
             }
             
             Button(action: onDelete) {
@@ -963,17 +975,91 @@ struct EditableItemRow: View {
             .accessibilityLabel(AccessibilityHelper.deleteItemButton)
             .accessibilityHint("Removes this item from the expense")
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(8)
-        .onReceive(NotificationCenter.default.publisher(for: .commitEditableItems)) { _ in
-            validateAndSave()
+    }
+    
+    private var displayContent: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                    .font(.body)
+                Text(item.price, format: .currency(code: "USD"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(AccessibilityHelper.expenseItemLabel(name: item.name, price: item.price))
+            .accessibilityHint("Swipe right to edit, swipe left to delete")
+            
+            Spacer()
+            
+            // Show swipe hint only for non-editing items
+            Text("⟷ Swipe to edit/delete")
+                .font(.caption2)
+                .foregroundColor(.secondary.opacity(0.6))
         }
-        .alert("Invalid Price", isPresented: $showingAlert) {
-            Button("OK") { }
-        } message: {
-            Text(alertMessage)
+    }
+    
+    private var swipeBackgroundView: some View {
+        HStack {
+            // Edit background (right swipe)
+            if dragOffset > 0 {
+                HStack {
+                    Image(systemName: "pencil")
+                        .foregroundColor(.white)
+                        .font(.title2)
+                    Text("Edit")
+                        .foregroundColor(.white)
+                        .fontWeight(.medium)
+                    Spacer()
+                }
+                .padding(.leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.blue)
+            }
+            
+            Spacer()
+            
+            // Delete background (left swipe)
+            if dragOffset < 0 {
+                HStack {
+                    Spacer()
+                    Text("Delete")
+                        .foregroundColor(.white)
+                        .fontWeight(.medium)
+                    Image(systemName: "trash")
+                        .foregroundColor(.white)
+                        .font(.title2)
+                }
+                .padding(.trailing)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.red)
+            }
         }
+    }
+    
+    private var swipeGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                dragOffset = value.translation.x
+            }
+            .onEnded { value in
+                let swipeDistance = value.translation.x
+                
+                withAnimation(.easeOut(duration: 0.3)) {
+                    if swipeDistance > editThreshold {
+                        // Right swipe - Edit
+                        priceText = String(format: "%.2f", item.price)
+                        isEditing = true
+                        dragOffset = 0
+                    } else if swipeDistance < deleteThreshold {
+                        // Left swipe - Delete
+                        onDelete()
+                    } else {
+                        // Return to center
+                        dragOffset = 0
+                    }
+                }
+            }
     }
     
     private func validateAndSave() {
