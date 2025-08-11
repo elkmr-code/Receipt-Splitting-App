@@ -7,10 +7,6 @@ struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var filter: DashboardFilter = .all
     @State private var selection = Set<UUID>()
-    @State private var showingScheduleSheet = false
-    @State private var scheduleDate = Date()
-    @State private var showingRecipientPicker = false
-    @State private var recipients = Set<UUID>()
     @State private var showPurgeAlert = false
     @State private var purgedCount = 0
     @State private var selectAll = false
@@ -76,20 +72,16 @@ struct DashboardView: View {
             }
             .onAppear { autoPurgeDone() }
             .alert("Auto-purged \(purgedCount) done items older than 30 days", isPresented: $showPurgeAlert) { Button("OK", role: .cancel) {} }
-            .sheet(isPresented: $showingScheduleSheet) { scheduleSheet }
-            .sheet(isPresented: $showingRecipientPicker) { recipientPickerSheet }
             .safeAreaInset(edge: .bottom) {
                 if !selection.isEmpty {
                     HStack {
-                        Button("Done") { bulkUpdate(.paid) }
+                        Button("Repaid") { bulkUpdate(.paid) }
                             .buttonStyle(.borderedProminent)
                             .tint(.green)
-                        Button("Overdue") { bulkMarkOverdue() }
+                        Button("Unsettled") { bulkMarkUnsettled() }
                             .buttonStyle(.bordered)
                             .tint(.red)
                         Spacer()
-                        Button("Schedule") { showingScheduleSheet = true }
-                            .buttonStyle(.bordered)
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 8)
@@ -108,7 +100,7 @@ struct DashboardView: View {
                             .font(.caption)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(filter == f ? Color.blue : Color(.systemGray6))
+                            .background(filter == f ? f.color : Color(.systemGray6))
                             .foregroundColor(filter == f ? .white : .primary)
                             .cornerRadius(8)
                     }
@@ -139,6 +131,15 @@ struct DashboardView: View {
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
                     
+                    // Show payment method info on each row
+                    HStack(spacing: 4) {
+                        Image(systemName: expense.paymentMethod.icon)
+                            .font(.caption2)
+                        Text(expense.paymentMethod.rawValue)
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.secondary)
+                    
                     if !req.messageText.isEmpty && req.messageText != expense.name {
                         Text(req.messageText)
                             .lineLimit(1)
@@ -164,21 +165,25 @@ struct DashboardView: View {
         }
         .contentShape(Rectangle())
         .background(isOverdue(req) ? Color.red.opacity(0.07) : (req.status == .paid ? Color.gray.opacity(0.05) : Color.clear))
-        // Improved swipe actions - only show Restore for completed items
-        .swipeActions(edge: .leading, allowsFullSwipe: false) { 
+        // Right swipe actions - show "Unsettled" and "Repaid" options
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) { 
+            Button("Repaid") { 
+                markPaid(req)
+            }
+            .tint(.green)
+            
             if req.status == .paid {
-                Button("Restore") { 
+                Button("Unsettled") { 
                     restore(req) 
                 }
-                .tint(.blue) 
+                .tint(.red) 
             }
         }
         .onTapGesture {
-            // Toggle selection mode when item is tapped
-            if !isSelectionMode {
-                isSelectionMode = true
+            // Only enable selection mode when "Select All" has been used
+            if isSelectionMode {
+                toggleRowSelection(req)
             }
-            toggleRowSelection(req)
         }
     }
 
@@ -205,11 +210,6 @@ struct DashboardView: View {
         try? modelContext.save()
     }
 
-    private func schedule(_ r: SplitRequest, days: Int) {
-        r.nextSendDate = Calendar.current.date(byAdding: .day, value: days, to: Date())
-        try? modelContext.save()
-    }
-
     private func bulkUpdate(_ status: RequestStatus) {
         for id in selection {
             if let r = requests.first(where: { $0.id == id }) { r.status = status }
@@ -220,87 +220,18 @@ struct DashboardView: View {
         isSelectionMode = false
     }
 
-    private func bulkMarkOverdue() {
+    private func bulkMarkUnsettled() {
         for id in selection {
             if let r = requests.first(where: { $0.id == id }) {
-                r.status = .overdue
-                r.priority = .high
-            }
-        }
-        try? modelContext.save()
-    }
-
-    private func bulkSchedule(days: Int) {
-        for id in selection {
-            if let r = requests.first(where: { $0.id == id }) {
-                r.nextSendDate = Calendar.current.date(byAdding: .day, value: days, to: Date())
+                r.status = .pending
+                r.priority = .normal
+                r.nextSendDate = nil
             }
         }
         try? modelContext.save()
         selection.removeAll()
         selectAll = false
         isSelectionMode = false
-    }
-
-    // MARK: - Scheduling UI
-    private var scheduleSheet: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                DatePicker("Choose Date & Time", selection: $scheduleDate, displayedComponents: [.date, .hourAndMinute])
-                    .datePickerStyle(.graphical)
-                HStack {
-                    Button("Next Week") { scheduleDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date() }
-                        .buttonStyle(.bordered)
-                    Button("Next Month") { scheduleDate = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date() }
-                        .buttonStyle(.bordered)
-                }
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Schedule Send")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showingScheduleSheet = false } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Continue") {
-                        showingScheduleSheet = false
-                        recipients = selection
-                        // default: if nothing selected, allow choosing individuals next
-                        showingRecipientPicker = true
-                    }.fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    private var recipientPickerSheet: some View {
-        NavigationStack {
-            VStack(alignment: .leading) {
-                List(filtered, selection: $recipients) { req in
-                    HStack {
-                        Text(req.participantName)
-                        Spacer()
-                        Text("$\(req.amount, specifier: "%.2f")").foregroundColor(.secondary)
-                    }
-                }
-                .environment(\.editMode, .constant(.active))
-                .listStyle(.insetGrouped)
-                .navigationTitle("Select Recipients")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showingRecipientPicker = false } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Set Schedule") {
-                            let ids = recipients.isEmpty ? (selection.isEmpty ? Set(filtered.map { $0.id }) : selection) : recipients
-                            for id in ids { if let r = requests.first(where: { $0.id == id }) { r.nextSendDate = scheduleDate } }
-                            try? modelContext.save()
-                            showingRecipientPicker = false
-                            selection.removeAll()
-                            selectAll = false
-                            isSelectionMode = false
-                        }.fontWeight(.semibold)
-                    }
-                }
-            }
-        }
     }
 
     // MARK: - Auto purge done > 30 days
@@ -349,19 +280,26 @@ struct DashboardView: View {
 }
 
 enum DashboardFilter: CaseIterable {
-    case all, unsettledOverdue, done
+    case all, unsettled, repaid
     var title: String {
         switch self {
-        case .unsettledOverdue: return "Unsettled/Overdue"
-        case .done: return "Done"
+        case .unsettled: return "Unsettled"
+        case .repaid: return "Repaid"
         case .all: return "All"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .unsettled: return .red
+        case .repaid: return .primary
+        case .all: return .primary
         }
     }
     func matches(_ r: SplitRequest) -> Bool {
         switch self {
-        case .unsettledOverdue:
+        case .unsettled:
             return r.status != .paid
-        case .done:
+        case .repaid:
             return r.status == .paid
         case .all:
             return true

@@ -167,71 +167,18 @@ struct ExpenseDetailView: View {
                         .cornerRadius(12)
                     }
                 }
-                
-                // Quick Actions
-                VStack(spacing: 12) {
-                    Text("Quick Actions")
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    HStack(spacing: 12) {
-                        Button(action: { showingEditSheet = true }) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "pencil.circle.fill")
-                                    .font(.system(size: 30))
-                                Text("Edit")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 60)
-                            .padding()
-                            .background(Color.orange)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                        }
-                        
-                        Button(action: shareExpense) {
-                            VStack(spacing: 8) {
-                                Image(systemName: "square.and.arrow.up.circle.fill")
-                                    .font(.system(size: 30))
-                                Text("Share")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 60)
-                            .padding()
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                        }
-                        
-                        if !expense.items.isEmpty {
-                            Button(action: { showingSplitView = true }) {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "divide.circle.fill")
-                                        .font(.system(size: 30))
-                                    Text("Split")
-                                        .font(.caption)
-                                        .fontWeight(.medium)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 60)
-                                .padding()
-                                .background(Color.green)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
-                            }
-                        }
-                    }
-                }
             }
             .padding()
         }
         .navigationTitle("Expense Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: shareExpense) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+        }
         .sheet(isPresented: $showingEditSheet) {
             EditExpenseView(expense: expense)
         }
@@ -560,22 +507,22 @@ struct EditableExpenseItemRow: View {
                     .font(.body)
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
-                
-                Button(action: { isEditing = true }) {
-                    Image(systemName: "pencil")
-                        .foregroundColor(.blue)
-                }
-                
-                Button(action: {
-                    onDelete()
-                }) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                }
             }
         }
         .padding()
         .background(Color(.systemBackground))
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button("Edit") {
+                isEditing = true
+            }
+            .tint(.blue)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button("Delete") {
+                onDelete()
+            }
+            .tint(.red)
+        }
         .alert("Error", isPresented: $showingAlert) {
             Button("OK", role: .cancel) {}
         } message: {
