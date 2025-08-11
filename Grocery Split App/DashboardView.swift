@@ -7,10 +7,6 @@ struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var filter: DashboardFilter = .all
     @State private var selection = Set<UUID>()
-    @State private var showingScheduleSheet = false
-    @State private var scheduleDate = Date()
-    @State private var showingRecipientPicker = false
-    @State private var recipients = Set<UUID>()
     @State private var showPurgeAlert = false
     @State private var purgedCount = 0
     @State private var selectAll = false
@@ -76,8 +72,6 @@ struct DashboardView: View {
             }
             .onAppear { autoPurgeDone() }
             .alert("Auto-purged \(purgedCount) done items older than 30 days", isPresented: $showPurgeAlert) { Button("OK", role: .cancel) {} }
-            .sheet(isPresented: $showingScheduleSheet) { scheduleSheet }
-            .sheet(isPresented: $showingRecipientPicker) { recipientPickerSheet }
             .safeAreaInset(edge: .bottom) {
                 if !selection.isEmpty {
                     HStack {
@@ -136,6 +130,15 @@ struct DashboardView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
+                    
+                    // Show payment method info on each row
+                    HStack(spacing: 4) {
+                        Image(systemName: expense.paymentMethod.icon)
+                            .font(.caption2)
+                        Text(expense.paymentMethod.rawValue)
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.secondary)
                     
                     if !req.messageText.isEmpty && req.messageText != expense.name {
                         Text(req.messageText)
@@ -207,11 +210,6 @@ struct DashboardView: View {
         try? modelContext.save()
     }
 
-    private func schedule(_ r: SplitRequest, days: Int) {
-        r.nextSendDate = Calendar.current.date(byAdding: .day, value: days, to: Date())
-        try? modelContext.save()
-    }
-
     private func bulkUpdate(_ status: RequestStatus) {
         for id in selection {
             if let r = requests.first(where: { $0.id == id }) { r.status = status }
@@ -234,79 +232,6 @@ struct DashboardView: View {
         selection.removeAll()
         selectAll = false
         isSelectionMode = false
-    }
-
-    private func bulkSchedule(days: Int) {
-        for id in selection {
-            if let r = requests.first(where: { $0.id == id }) {
-                r.nextSendDate = Calendar.current.date(byAdding: .day, value: days, to: Date())
-            }
-        }
-        try? modelContext.save()
-        selection.removeAll()
-        selectAll = false
-        isSelectionMode = false
-    }
-
-    // MARK: - Scheduling UI
-    private var scheduleSheet: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                DatePicker("Choose Date & Time", selection: $scheduleDate, displayedComponents: [.date, .hourAndMinute])
-                    .datePickerStyle(.graphical)
-                HStack {
-                    Button("Next Week") { scheduleDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date() }
-                        .buttonStyle(.bordered)
-                    Button("Next Month") { scheduleDate = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date() }
-                        .buttonStyle(.bordered)
-                }
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Schedule Send")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showingScheduleSheet = false } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Continue") {
-                        showingScheduleSheet = false
-                        recipients = selection
-                        // default: if nothing selected, allow choosing individuals next
-                        showingRecipientPicker = true
-                    }.fontWeight(.semibold)
-                }
-            }
-        }
-    }
-
-    private var recipientPickerSheet: some View {
-        NavigationStack {
-            VStack(alignment: .leading) {
-                List(filtered, selection: $recipients) { req in
-                    HStack {
-                        Text(req.participantName)
-                        Spacer()
-                        Text("$\(req.amount, specifier: "%.2f")").foregroundColor(.secondary)
-                    }
-                }
-                .environment(\.editMode, .constant(.active))
-                .listStyle(.insetGrouped)
-                .navigationTitle("Select Recipients")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showingRecipientPicker = false } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Set Schedule") {
-                            let ids = recipients.isEmpty ? (selection.isEmpty ? Set(filtered.map { $0.id }) : selection) : recipients
-                            for id in ids { if let r = requests.first(where: { $0.id == id }) { r.nextSendDate = scheduleDate } }
-                            try? modelContext.save()
-                            showingRecipientPicker = false
-                            selection.removeAll()
-                            selectAll = false
-                            isSelectionMode = false
-                        }.fontWeight(.semibold)
-                    }
-                }
-            }
-        }
     }
 
     // MARK: - Auto purge done > 30 days
