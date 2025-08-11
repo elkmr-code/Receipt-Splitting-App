@@ -81,15 +81,13 @@ struct DashboardView: View {
             .safeAreaInset(edge: .bottom) {
                 if !selection.isEmpty {
                     HStack {
-                        Button("Done") { bulkUpdate(.paid) }
+                        Button("Repaid") { bulkUpdate(.paid) }
                             .buttonStyle(.borderedProminent)
                             .tint(.green)
-                        Button("Overdue") { bulkMarkOverdue() }
+                        Button("Unsettled") { bulkMarkUnsettled() }
                             .buttonStyle(.bordered)
                             .tint(.red)
                         Spacer()
-                        Button("Schedule") { showingScheduleSheet = true }
-                            .buttonStyle(.bordered)
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 8)
@@ -108,7 +106,7 @@ struct DashboardView: View {
                             .font(.caption)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
-                            .background(filter == f ? Color.blue : Color(.systemGray6))
+                            .background(filter == f ? f.color : Color(.systemGray6))
                             .foregroundColor(filter == f ? .white : .primary)
                             .cornerRadius(8)
                     }
@@ -164,21 +162,25 @@ struct DashboardView: View {
         }
         .contentShape(Rectangle())
         .background(isOverdue(req) ? Color.red.opacity(0.07) : (req.status == .paid ? Color.gray.opacity(0.05) : Color.clear))
-        // Improved swipe actions - only show Restore for completed items
-        .swipeActions(edge: .leading, allowsFullSwipe: false) { 
+        // Right swipe actions - show "Unsettled" and "Repaid" options
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) { 
+            Button("Repaid") { 
+                markPaid(req)
+            }
+            .tint(.green)
+            
             if req.status == .paid {
-                Button("Restore") { 
+                Button("Unsettled") { 
                     restore(req) 
                 }
-                .tint(.blue) 
+                .tint(.red) 
             }
         }
         .onTapGesture {
-            // Toggle selection mode when item is tapped
-            if !isSelectionMode {
-                isSelectionMode = true
+            // Only enable selection mode when "Select All" has been used
+            if isSelectionMode {
+                toggleRowSelection(req)
             }
-            toggleRowSelection(req)
         }
     }
 
@@ -220,14 +222,18 @@ struct DashboardView: View {
         isSelectionMode = false
     }
 
-    private func bulkMarkOverdue() {
+    private func bulkMarkUnsettled() {
         for id in selection {
             if let r = requests.first(where: { $0.id == id }) {
-                r.status = .overdue
-                r.priority = .high
+                r.status = .pending
+                r.priority = .normal
+                r.nextSendDate = nil
             }
         }
         try? modelContext.save()
+        selection.removeAll()
+        selectAll = false
+        isSelectionMode = false
     }
 
     private func bulkSchedule(days: Int) {
@@ -349,19 +355,26 @@ struct DashboardView: View {
 }
 
 enum DashboardFilter: CaseIterable {
-    case all, unsettledOverdue, done
+    case all, unsettled, repaid
     var title: String {
         switch self {
-        case .unsettledOverdue: return "Unsettled/Overdue"
-        case .done: return "Done"
+        case .unsettled: return "Unsettled"
+        case .repaid: return "Repaid"
         case .all: return "All"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .unsettled: return .red
+        case .repaid: return .primary
+        case .all: return .primary
         }
     }
     func matches(_ r: SplitRequest) -> Bool {
         switch self {
-        case .unsettledOverdue:
+        case .unsettled:
             return r.status != .paid
-        case .done:
+        case .repaid:
             return r.status == .paid
         case .all:
             return true

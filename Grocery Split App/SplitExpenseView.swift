@@ -573,11 +573,19 @@ struct EnhancedSplitExpenseView: View {
                 .cornerRadius(10)
             }
             
-            Button(action: { showingPaymentMethodSelector = true }) {
+            Button(action: { 
+                // Validate that participants are selected before proceeding
+                if selectedParticipants.isEmpty {
+                    alertMessage = "Please select at least one individual to send payment info to."
+                    showingAlert = true
+                    return
+                }
+                showingPaymentMethodSelector = true 
+            }) {
                 VStack(spacing: 4) {
                     Image(systemName: "creditcard.circle")
                         .font(.title2)
-                    Text("With Payment Info")
+                    Text("Send with payment info")
                         .font(.caption)
                 }
                 .frame(maxWidth: .infinity)
