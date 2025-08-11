@@ -33,10 +33,14 @@ struct DashboardView: View {
                 // Select All button - positioned above the rows
                 HStack {
                     Button(action: toggleSelectAll) { 
-                        HStack {
+                        HStack(spacing: 6) {
                             Image(systemName: selectAll ? "checkmark.circle.fill" : "circle")
+                                .font(.caption)
                             Text(isSelectionMode ? (selectAll ? "Deselect All" : "Select All") : "Select All")
+                                .font(.caption)
+                                .fontWeight(.medium)
                         }
+                        .foregroundColor(.blue)
                     }
                     .padding(.horizontal)
                     
@@ -47,6 +51,7 @@ struct DashboardView: View {
                             selectAll = false
                             isSelectionMode = false
                         }
+                        .font(.caption)
                         .buttonStyle(.bordered)
                         .padding(.trailing)
                     }
@@ -84,19 +89,33 @@ struct DashboardView: View {
             .alert("Auto-purged \(purgedCount) done items older than 30 days", isPresented: $showPurgeAlert) { Button("OK", role: .cancel) {} }
             .safeAreaInset(edge: .bottom) {
                 if !selection.isEmpty {
-                    HStack {
+                    HStack(spacing: 12) {
                         Button("Unsettled") { bulkMarkUnsettled() }
+                            .font(.body)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
                             .buttonStyle(.borderedProminent)
                             .tint(.red)
+                        
                         Button("Repaid") { bulkUpdate(.paid) }
-                            .buttonStyle(.bordered)
+                            .font(.body)
+                            .fontWeight(.semibold)  
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .buttonStyle(.borderedProminent)
                             .tint(.green)
+                        
                         Spacer()
+                        
                         Button("Schedule Send") { showingScheduleSheet = true }
+                            .font(.body)
+                            .fontWeight(.medium)
                             .buttonStyle(.bordered)
+                            .tint(.blue)
                     }
                     .padding(.horizontal)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 12)
                     .background(.ultraThinMaterial)
                 }
             }
@@ -177,16 +196,17 @@ struct DashboardView: View {
 
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 ForEach(DashboardFilter.allCases, id: \.self) { f in
                     Button(action: { filter = f }) {
                         Text(f.title)
-                            .font(.caption)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+                            .font(.body)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
                             .background(filter == f ? f.color : Color(.systemGray6))
                             .foregroundColor(filter == f ? .white : .primary)
-                            .cornerRadius(8)
+                            .cornerRadius(12)
                     }
                 }
             }
@@ -215,14 +235,17 @@ struct DashboardView: View {
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
                     
-                    // Show payment method info on each row
-                    HStack(spacing: 4) {
-                        Image(systemName: expense.paymentMethod.icon)
-                            .font(.caption2)
-                        Text(expense.paymentMethod.rawValue)
-                            .font(.caption2)
+                    // Show payment method info on each row - only for non-cash methods
+                    if let paymentMethod = expense.paymentMethod, paymentMethod != .cash {
+                        HStack(spacing: 4) {
+                            Image(systemName: paymentMethod.icon)
+                                .font(.caption2)
+                                .foregroundColor(.blue)
+                            Text(paymentMethod.rawValue)
+                                .font(.caption2)
+                                .foregroundColor(.blue)
+                        }
                     }
-                    .foregroundColor(.secondary)
                     
                     if !req.messageText.isEmpty && req.messageText != expense.name {
                         Text(req.messageText)

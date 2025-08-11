@@ -20,7 +20,7 @@ struct ScheduleModalView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 32) {
                     // Date and Time Selection
                     dateTimeSection
                     
@@ -33,7 +33,8 @@ struct ScheduleModalView: View {
                     // Custom Message
                     messageSection
                 }
-                .padding()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
             }
             .navigationTitle("Schedule Reminder")
             .navigationBarTitleDisplayMode(.inline)
@@ -61,45 +62,69 @@ struct ScheduleModalView: View {
     // MARK: - View Components
     
     private var dateTimeSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 20) {
             Text("When to send reminder")
-                .font(.headline)
+                .font(.title2)
+                .fontWeight(.semibold)
             
-            VStack(spacing: 12) {
-                // Date Picker
-                DatePicker("Date", selection: $selectedDate, in: Date()..., displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+            VStack(spacing: 16) {
+                // Large Calendar Picker - Main Focus
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Select Date")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    DatePicker("Date", selection: $selectedDate, in: Date()..., displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(16)
+                        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 2)
+                }
                 
-                // Time Picker (iOS-style wheel)
-                DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
-                    .datePickerStyle(.wheel)
-                    .frame(height: 120)
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(12)
+                // Time Picker - Secondary, Smaller
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Select Time")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                    
+                    DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
+                        .datePickerStyle(.wheel)
+                        .frame(height: 100)
+                        .padding(.horizontal)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                }
             }
         }
     }
     
     private var quickScheduleSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Quick Schedule")
-                .font(.headline)
+                .font(.title3)
+                .fontWeight(.semibold)
             
-            HStack(spacing: 12) {
+            HStack(spacing: 16) {
                 Button("Next Week") {
                     selectedDate = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: Date()) ?? Date()
                 }
-                .buttonStyle(.bordered)
+                .font(.body)
+                .fontWeight(.medium)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .buttonStyle(.borderedProminent)
                 .tint(.blue)
                 
                 Button("Next Month") {
                     selectedDate = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()
                 }
-                .buttonStyle(.bordered)
+                .font(.body)
+                .fontWeight(.medium)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .buttonStyle(.borderedProminent)
                 .tint(.green)
                 
                 Spacer()
@@ -108,19 +133,22 @@ struct ScheduleModalView: View {
     }
     
     private var participantSelectionSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Send to")
-                    .font(.headline)
+                    .font(.title3)
+                    .fontWeight(.semibold)
                 
                 Spacer()
                 
                 Button(action: toggleSelectAll) {
-                    HStack {
+                    HStack(spacing: 6) {
                         Image(systemName: scheduleSelectAll ? "checkmark.circle.fill" : "circle")
                         Text(scheduleSelectAll ? "Deselect All" : "Select All")
                     }
                     .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.blue)
                 }
             }
             
@@ -130,9 +158,9 @@ struct ScheduleModalView: View {
                     .padding()
                     .frame(maxWidth: .infinity)
                     .background(Color(.systemGray6))
-                    .cornerRadius(8)
+                    .cornerRadius(12)
             } else {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 12) {
                     ForEach(filteredSelectedRequests) { request in
                         participantRow(request)
                     }
@@ -145,20 +173,29 @@ struct ScheduleModalView: View {
     private func participantRow(_ request: SplitRequest) -> some View {
         let isSelected = scheduleSelection.contains(request.id)
         Button(action: { toggleParticipantSelection(request) }) {
-            HStack {
+            HStack(spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
                     .foregroundColor(isSelected ? .blue : .gray)
                 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(request.participantName)
                         .font(.body)
-                        .fontWeight(.medium)
+                        .fontWeight(.semibold)
                         .foregroundColor(.primary)
                     
                     if let expense = request.expense {
-                        Text(expense.name)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        HStack(spacing: 4) {
+                            Text(expense.name)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            if expense.paymentMethod != .cash {
+                                Image(systemName: expense.paymentMethod.icon)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
                 }
                 
@@ -166,27 +203,40 @@ struct ScheduleModalView: View {
                 
                 Text("$\(request.amount, specifier: "%.2f")")
                     .font(.body)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.green)
+                    .fontWeight(.bold)
+                    .foregroundColor(isSelected ? .blue : .green)
             }
-            .padding()
-            .background(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? Color.blue.opacity(0.1) : Color(.systemGray6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                    )
             )
         }
+        .buttonStyle(.plain)
     }
     
     private var messageSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Reminder Message")
-                .font(.headline)
+                .font(.title3)
+                .fontWeight(.semibold)
             
-            TextField("Enter custom message...", text: $customMessage, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(3...5)
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Enter custom message...", text: $customMessage, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .padding(16)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .lineLimit(3...6)
+                
+                Text("This message will be sent to selected participants")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
         }
     }
     
