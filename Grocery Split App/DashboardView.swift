@@ -5,7 +5,7 @@ struct DashboardView: View {
     @Query(sort: \SplitRequest.createdDate, order: .reverse) var requests: [SplitRequest]
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @State private var filter: DashboardFilter = .active
+    @State private var filter: DashboardFilter = .all
     @State private var selection = Set<UUID>()
     @State private var showingScheduleSheet = false
     @State private var scheduleDate = Date()
@@ -14,6 +14,7 @@ struct DashboardView: View {
     @State private var showPurgeAlert = false
     @State private var purgedCount = 0
     @State private var selectAll = false
+    @State private var isSelectionMode = false
 
     var filtered: [SplitRequest] {
         requests.filter { filter.matches($0) }
@@ -28,6 +29,31 @@ struct DashboardView: View {
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
+                
+                // Select All button - positioned above the rows
+                HStack {
+                    Button(action: toggleSelectAll) { 
+                        HStack {
+                            Image(systemName: selectAll ? "checkmark.circle.fill" : "circle")
+                            Text(isSelectionMode ? (selectAll ? "Deselect All" : "Select All") : "Select All")
+                        }
+                    }
+                    .padding(.horizontal)
+                    
+                    // Show Done button when in selection mode to exit selection
+                    if isSelectionMode {
+                        Button("Done") {
+                            selection.removeAll()
+                            selectAll = false
+                            isSelectionMode = false
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.trailing)
+                    }
+                    
+                    Spacer()
+                }
+                
                 if filtered.isEmpty {
                     ContentUnavailableView("No records", systemImage: "tray")
                 } else {
@@ -42,8 +68,11 @@ struct DashboardView: View {
             .padding(.top, 8)
             .navigationTitle("Dashboard")
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) { Button(action: toggleSelectAll) { Image(systemName: selectAll ? "checkmark.circle.fill" : "circle") } }
-                ToolbarItem(placement: .navigationBarTrailing) { Button("Schedule") { showingScheduleSheet = true } }
+                ToolbarItem(placement: .navigationBarTrailing) { 
+                    Button("Done") { 
+                        dismiss() 
+                    } 
+                }
             }
             .onAppear { autoPurgeDone() }
             .alert("Auto-purged \(purgedCount) done items older than 30 days", isPresented: $showPurgeAlert) { Button("OK", role: .cancel) {} }
@@ -91,10 +120,13 @@ struct DashboardView: View {
 
     private func row(_ req: SplitRequest) -> some View {
         HStack {
-            Button(action: { toggleRowSelection(req) }) {
-                Image(systemName: selection.contains(req.id) ? "checkmark.circle.fill" : "circle")
+            // Only show selection circle when in selection mode
+            if isSelectionMode {
+                Button(action: { toggleRowSelection(req) }) {
+                    Image(systemName: selection.contains(req.id) ? "checkmark.circle.fill" : "circle")
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
             let statusColor: Color = req.status == .paid ? .gray.opacity(0.6) : (isOverdue(req) ? .red : .primary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(req.participantName)
@@ -159,7 +191,9 @@ struct DashboardView: View {
             if let r = requests.first(where: { $0.id == id }) { r.status = status }
         }
         try? modelContext.save()
-        selection.removeAll(); selectAll = false
+        selection.removeAll()
+        selectAll = false
+        isSelectionMode = false
     }
 
     private func bulkMarkOverdue() {
@@ -179,7 +213,9 @@ struct DashboardView: View {
             }
         }
         try? modelContext.save()
-        selection.removeAll(); selectAll = false
+        selection.removeAll()
+        selectAll = false
+        isSelectionMode = false
     }
 
     // MARK: - Scheduling UI
@@ -233,7 +269,9 @@ struct DashboardView: View {
                             for id in ids { if let r = requests.first(where: { $0.id == id }) { r.nextSendDate = scheduleDate } }
                             try? modelContext.save()
                             showingRecipientPicker = false
-                            selection.removeAll(); selectAll = false
+                            selection.removeAll()
+                            selectAll = false
+                            isSelectionMode = false
                         }.fontWeight(.semibold)
                     }
                 }
@@ -253,38 +291,52 @@ struct DashboardView: View {
     }
 
     private func toggleRowSelection(_ r: SplitRequest) {
-        if selection.contains(r.id) { selection.remove(r.id) } else { selection.insert(r.id) }
+        if selection.contains(r.id) { 
+            selection.remove(r.id) 
+        } else { 
+            selection.insert(r.id) 
+        }
+        
+        // Update selectAll state based on current selection
+        selectAll = selection.count == filtered.count
+        
+        // Exit selection mode if no items are selected
+        if selection.isEmpty {
+            isSelectionMode = false
+        }
     }
 
     private func toggleSelectAll() {
-        if selectAll {
-            selection.removeAll()
-        } else {
+        if !isSelectionMode {
+            // Entering selection mode - select all items
+            isSelectionMode = true
             selection = Set(filtered.map { $0.id })
+            selectAll = true
+        } else if selectAll {
+            // Currently all selected - deselect all but stay in selection mode
+            selection.removeAll()
+            selectAll = false
+        } else {
+            // Currently some/none selected - select all
+            selection = Set(filtered.map { $0.id })
+            selectAll = true
         }
-        selectAll.toggle()
     }
 }
 
 enum DashboardFilter: CaseIterable {
-    case active, unsettled, overdue, done, all
+    case all, unsettled, done
     var title: String {
         switch self {
-        case .active: return "Active"
         case .unsettled: return "Unsettled"
-        case .overdue: return "Overdue"
         case .done: return "Done"
         case .all: return "All"
         }
     }
     func matches(_ r: SplitRequest) -> Bool {
         switch self {
-        case .active:
-            return r.status == .pending || r.status == .sent
         case .unsettled:
             return r.status != .paid
-        case .overdue:
-            return r.status == .overdue
         case .done:
             return r.status == .paid
         case .all:
