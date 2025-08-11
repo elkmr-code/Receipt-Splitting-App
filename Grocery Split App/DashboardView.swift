@@ -132,15 +132,25 @@ struct DashboardView: View {
                 Text(req.participantName)
                     .font(.headline)
                     .foregroundColor(statusColor)
-                if let title = req.expense?.name, !title.isEmpty {
-                    Text(title)
+                // Show merchant/receipt name prominently
+                if let expense = req.expense {
+                    Text(expense.name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    
+                    if !req.messageText.isEmpty && req.messageText != expense.name {
+                        Text(req.messageText)
+                            .lineLimit(1)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else {
+                    Text(req.messageText)
+                        .lineLimit(1)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                Text(req.messageText)
-                    .lineLimit(1)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
@@ -154,8 +164,22 @@ struct DashboardView: View {
         }
         .contentShape(Rectangle())
         .background(isOverdue(req) ? Color.red.opacity(0.07) : (req.status == .paid ? Color.gray.opacity(0.05) : Color.clear))
-        // Swipes simplified to Restore only
-        .swipeActions(edge: .leading) { Button("Restore") { restore(req) }.tint(.blue) }
+        // Improved swipe actions - only show Restore for completed items
+        .swipeActions(edge: .leading, allowsFullSwipe: false) { 
+            if req.status == .paid {
+                Button("Restore") { 
+                    restore(req) 
+                }
+                .tint(.blue) 
+            }
+        }
+        .onTapGesture {
+            // Toggle selection mode when item is tapped
+            if !isSelectionMode {
+                isSelectionMode = true
+            }
+            toggleRowSelection(req)
+        }
     }
 
     private func isOverdue(_ r: SplitRequest) -> Bool {
@@ -325,17 +349,17 @@ struct DashboardView: View {
 }
 
 enum DashboardFilter: CaseIterable {
-    case all, unsettled, done
+    case all, unsettledOverdue, done
     var title: String {
         switch self {
-        case .unsettled: return "Unsettled"
+        case .unsettledOverdue: return "Unsettled/Overdue"
         case .done: return "Done"
         case .all: return "All"
         }
     }
     func matches(_ r: SplitRequest) -> Bool {
         switch self {
-        case .unsettled:
+        case .unsettledOverdue:
             return r.status != .paid
         case .done:
             return r.status == .paid

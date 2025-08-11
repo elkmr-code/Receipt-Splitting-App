@@ -182,6 +182,9 @@ class ReceiptParser {
         var detectedTotal: Double?
         var metadata = ReceiptMetadata()
         
+        // Extract store name from first few lines (most common location)
+        extractStoreNameFromHeader(lines: Array(lines.prefix(8)), into: &metadata)
+        
         for line in lines {
             // Check for total lines first (before skipping)
             if let total = extractTotal(from: line) {
@@ -435,9 +438,12 @@ class ReceiptParser {
         // Extract store name, date, time, etc.
         // This could be expanded based on needs
         
-        // Store name patterns
+        // Store name patterns - enhanced for better recognition
         let storePatterns = [
-            #"(?i)(walmart|target|costco|safeway|kroger|publix|whole\s*foods|trader\s*joe)"#
+            #"(?i)(walmart|target|costco|safeway|kroger|publix|whole\s*foods|trader\s*joe)"#,
+            #"(?i)(starbucks|dunkin|mcdonald|burger\s*king|subway|chipotle)"#,
+            #"(?i)(aroma\s*coffee|blue\s*bottle|philz|peet|dunkin)"#,
+            #"(?i)(cvs|walgreens|rite\s*aid|amazon|apple|best\s*buy)"#
         ]
         
         for pattern in storePatterns {
@@ -446,13 +452,128 @@ class ReceiptParser {
                 let range = NSRange(location: 0, length: line.utf16.count)
                 if let match = regex.firstMatch(in: line, options: [], range: range),
                    let storeRange = Range(match.range(at: 1), in: line) {
-                    metadata.storeName = String(line[storeRange])
+                    let storeName = String(line[storeRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    metadata.storeName = cleanStoreName(storeName)
                     break
                 }
             } catch {
                 continue
             }
         }
+    }
+    
+    // MARK: - Enhanced Store Name Extraction from Header
+    private static func extractStoreNameFromHeader(lines: [String], into metadata: inout ReceiptMetadata) {
+        // Extract store name from the first few lines where it typically appears
+        
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Skip very short lines or lines with numbers/dates
+            if trimmed.count < 3 || trimmed.range(of: #"\d{1,2}[/\-]\d{1,2}"#, options: .regularExpression) != nil {
+                continue
+            }
+            
+            // Skip lines that contain receipt metadata
+            if shouldSkipLine(trimmed) {
+                continue
+            }
+            
+            // Look for business-like names in the first few lines
+            if index < 4 && isPotentialStoreName(trimmed) {
+                metadata.storeName = cleanStoreName(trimmed)
+                break
+            }
+            
+            // Check for known restaurant patterns
+            let restaurantIndicators = ["restaurant", "cafe", "coffee", "bistro", "grill", "bar", "deli", "pizza"]
+            for indicator in restaurantIndicators {
+                if trimmed.lowercased().contains(indicator) && trimmed.count < 50 {
+                    metadata.storeName = cleanStoreName(trimmed)
+                    return
+                }
+            }
+        }
+        
+        // Fallback: use first non-empty line that looks like a business name
+        if metadata.storeName == nil {
+            for line in lines.prefix(3) {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.count >= 3 && 
+                   trimmed.count <= 40 && 
+                   !shouldSkipLine(trimmed) &&
+                   !trimmed.contains("receipt") &&
+                   !trimmed.lowercased().contains("thank") {
+                    metadata.storeName = cleanStoreName(trimmed)
+                    break
+                }
+            }
+        }
+    }
+    
+    private static func isPotentialStoreName(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Check length constraints
+        guard trimmed.count >= 3 && trimmed.count <= 50 else { return false }
+        
+        // Must contain letters
+        guard trimmed.rangeOfCharacter(from: .letters) != nil else { return false }
+        
+        // Shouldn't be mostly numbers
+        let letterCount = trimmed.filter { $0.isLetter }.count
+        let totalCount = trimmed.count
+        guard Double(letterCount) / Double(totalCount) > 0.5 else { return false }
+        
+        // Common business name patterns
+        let businessPatterns = [
+            #"(?i)\b\w+\s+(inc|llc|corp|ltd|co)\b"#,
+            #"(?i)\b\w+\s+(restaurant|cafe|coffee|shop|store|market|deli)\b"#,
+            #"(?i)\b(the\s+)?\w+\s+(bar|grill|bistro|kitchen)\b"#
+        ]
+        
+        for pattern in businessPatterns {
+            if trimmed.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        
+        // Check if it contains common business words
+        let businessWords = ["restaurant", "cafe", "coffee", "shop", "store", "market", "deli", "bar", "grill", "kitchen", "bistro", "pizza", "burger", "chicken"]
+        for word in businessWords {
+            if trimmed.lowercased().contains(word) {
+                return true
+            }
+        }
+        
+        // If first line and looks like a proper name (capitalized words)
+        let words = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        if words.count >= 1 && words.count <= 4 {
+            let capitalizedWords = words.filter { $0.first?.isUppercase == true }
+            if capitalizedWords.count == words.count {
+                return true
+            }
+        }
+        
+        return false
+    }
+    
+    private static func cleanStoreName(_ name: String) -> String {
+        var cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Remove common receipt artifacts
+        cleaned = cleaned.replacingOccurrences(of: #"^\*+"#, with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: #"\*+$"#, with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: #"^-+"#, with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: #"-+$"#, with: "", options: .regularExpression)
+        
+        // Clean up multiple spaces
+        cleaned = cleaned.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        
+        // Capitalize properly
+        cleaned = cleaned.capitalized
+        
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     private static func validateAndCleanItems(_ items: [ParsedItem], detectedTotal: Double?) -> [ParsedItem] {
