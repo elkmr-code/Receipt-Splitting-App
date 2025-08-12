@@ -130,6 +130,26 @@ class SplitRequest {
     }
 }
 
+// MARK: - Scheduled Split Request Model
+@Model
+class ScheduledSplitRequest {
+    var id: UUID
+    var splitRequestIds: [UUID] // SwiftData doesn't support Set<UUID> directly
+    var scheduledDate: Date
+    var message: String
+    var participants: [String]
+    var createdDate: Date
+    
+    init(splitRequestIds: Set<UUID>, scheduledDate: Date, message: String, participants: [String]) {
+        self.id = UUID()
+        self.splitRequestIds = Array(splitRequestIds)
+        self.scheduledDate = scheduledDate
+        self.message = message
+        self.participants = participants
+        self.createdDate = Date()
+    }
+}
+
 enum PaymentMethod: String, CaseIterable, Codable {
     case cash = "Cash"
     case creditCard = "Credit Card"

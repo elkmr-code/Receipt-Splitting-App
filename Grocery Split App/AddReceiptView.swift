@@ -451,30 +451,31 @@ struct AddExpenseView: View {
             ImagePicker(selectedImage: $imageForOCR, showingManualEntry: .constant(false), sourceType: .photoLibrary)
         }
         .sheet(item: $currentScanResult) { scanResult in
-            ScanningResultsView(
-                scanResult: scanResult,
-                onAddAll: {
-                    addAllScannedItems(scanResult.items)
-                    currentScanResult = nil
-                },
-                onChooseItems: {
-                    selectedScanItems = Set(scanResult.items.map { $0.id })
-                    showingItemSelection = true
-                    currentScanResult = scanResult
-                },
-                onCancel: {
-                    currentScanResult = nil
-                }
-            )
-        }
-        .sheet(isPresented: $showingItemSelection) {
-            if let scanResult = currentScanResult {
+            if showingItemSelection {
                 ItemSelectionView(
                     scanResult: scanResult,
                     selectedItems: $selectedScanItems,
                     onConfirm: { selectedItems in
                         addAllScannedItems(selectedItems)
                         showingItemSelection = false
+                        currentScanResult = nil
+                    },
+                    onBack: {
+                        showingItemSelection = false
+                    }
+                )
+            } else {
+                ScanningResultsView(
+                    scanResult: scanResult,
+                    onAddAll: {
+                        addAllScannedItems(scanResult.items)
+                        currentScanResult = nil
+                    },
+                    onChooseItems: {
+                        selectedScanItems = [] // Start with no items selected
+                        showingItemSelection = true
+                    },
+                    onCancel: {
                         currentScanResult = nil
                     }
                 )

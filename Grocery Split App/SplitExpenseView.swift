@@ -143,26 +143,16 @@ struct EnhancedSplitExpenseView: View {
             PaymentMethodSelectorView(
                 selectedMethod: $selectedPaymentMethodForSharing,
                 onConfirm: {
-                    // FIXED: Preserve existing message content and only update payment method
-                    // instead of clearing the entire template
+                    // Generate fresh message with selected template and new payment method
                     let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
                     let peopleToUse = selectedPeople.isEmpty ? participants : selectedPeople
                     
-                    // Preserve the current message content if it exists
-                    if finalShareMessage.isEmpty {
-                        // First time - generate full message
-                        finalShareMessage = generatePaymentShareContentWithMethod(
-                            for: peopleToUse,
-                            paymentMethod: selectedPaymentMethodForSharing
-                        )
-                    } else {
-                        // Update only payment method section, preserve rest of message
-                        finalShareMessage = updatePaymentMethodInMessage(
-                            existingMessage: finalShareMessage,
-                            newPaymentMethod: selectedPaymentMethodForSharing,
-                            participants: peopleToUse
-                        )
-                    }
+                    // Always regenerate the full message with the current template and new payment method
+                    finalShareMessage = generatePaymentShareContentWithMethod(
+                        for: peopleToUse,
+                        paymentMethod: selectedPaymentMethodForSharing
+                    )
+                    
                     showingPaymentMethodSelector = false
                     showingFinalMessagePreview = true
                 },
@@ -450,6 +440,8 @@ struct EnhancedSplitExpenseView: View {
                         Button(action: {
                             selectedMessageTemplate = template
                             shareMessage = template.message
+                            // Clear final message to force regeneration with new template
+                            finalShareMessage = ""
                         }) {
                             HStack {
                                 Image(systemName: template.icon)

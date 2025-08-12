@@ -3,6 +3,7 @@ import SwiftData
 
 struct DashboardView: View {
     @Query(sort: \SplitRequest.createdDate, order: .reverse) var requests: [SplitRequest]
+    @Query(sort: \ScheduledSplitRequest.createdDate, order: .reverse) var scheduledRequests: [ScheduledSplitRequest]
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @State private var filter: DashboardFilter = .all
@@ -12,9 +13,9 @@ struct DashboardView: View {
     @State private var selectAll = false
     @State private var isSelectionMode = false
     @State private var showingScheduleSheet = false
-    @State private var scheduledRequests: [ScheduledSplitRequest] = []
     @State private var showingScheduleSuccess = false
     @State private var scheduleSuccessMessage = ""
+    @State private var isScheduleQueueExpanded = false
 
     var filtered: [SplitRequest] {
         requests.filter { filter.matches($0) }
@@ -90,27 +91,31 @@ struct DashboardView: View {
             .safeAreaInset(edge: .bottom) {
                 if !selection.isEmpty {
                     HStack(spacing: 12) {
-                        Button("Unsettled") { bulkMarkUnsettled() }
-                            .font(.body)
-                            .fontWeight(.semibold)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .buttonStyle(.borderedProminent)
-                            .tint(.red)
+                        Button("Pending") { bulkMarkUnsettled() }
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.red.opacity(0.2))
+                            .foregroundColor(.red)
+                            .cornerRadius(8)
                         
-                        Button("Repaid") { bulkUpdate(.paid) }
-                            .font(.body)
-                            .fontWeight(.semibold)  
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
+                        Button("Paid") { bulkUpdate(.paid) }
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.green.opacity(0.2))
+                            .foregroundColor(.green)
+                            .cornerRadius(8)
                         
                         Spacer()
                         
                         Button("Schedule Send") { showingScheduleSheet = true }
-                            .font(.body)
+                            .font(.caption)
                             .fontWeight(.medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                             .buttonStyle(.bordered)
                             .tint(.blue)
                     }
@@ -124,9 +129,12 @@ struct DashboardView: View {
                     selectedRequests: selection,
                     allRequests: filtered,
                     onSchedule: { scheduledRequest in
-                        scheduledRequests.append(scheduledRequest)
+                        modelContext.insert(scheduledRequest)
+                        try? modelContext.save()
                         showingScheduleSheet = false
-                        scheduleSuccessMessage = "Successfully scheduled messages for \\(scheduledRequest.participants.count) participant(s) on \\(scheduledRequest.scheduledDate.formatted(date: .abbreviated, time: .shortened))"
+                        let participantText = scheduledRequest.participants.count == 1 ? "1 participant" : "\(scheduledRequest.participants.count) participants"
+                        let dateText = scheduledRequest.scheduledDate.formatted(date: .abbreviated, time: .shortened)
+                        scheduleSuccessMessage = "Successfully scheduled messages for \(participantText) on \(dateText)"
                         showingScheduleSuccess = true
                     }
                 )
@@ -141,16 +149,32 @@ struct DashboardView: View {
     
     private var scheduleQueueSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Scheduled Messages")
-                .font(.headline)
-                .padding(.horizontal)
-            
-            LazyVStack(spacing: 8) {
-                ForEach(scheduledRequests) { scheduledRequest in
-                    scheduledRequestRow(scheduledRequest)
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    isScheduleQueueExpanded.toggle()
+                }
+            }) {
+                HStack {
+                    Text("Scheduled Messages (\(scheduledRequests.count))")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Image(systemName: isScheduleQueueExpanded ? "chevron.up" : "chevron.down")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
                 }
             }
             .padding(.horizontal)
+            
+            if isScheduleQueueExpanded {
+                LazyVStack(spacing: 8) {
+                    ForEach(scheduledRequests) { scheduledRequest in
+                        scheduledRequestRow(scheduledRequest)
+                    }
+                }
+                .padding(.horizontal)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(.vertical, 8)
         .background(Color(.systemGray6).opacity(0.3))
@@ -191,7 +215,8 @@ struct DashboardView: View {
     }
     
     private func deleteScheduledRequest(_ scheduledRequest: ScheduledSplitRequest) {
-        scheduledRequests.removeAll { $0.id == scheduledRequest.id }
+        modelContext.delete(scheduledRequest)
+        try? modelContext.save()
     }
 
     private var filterBar: some View {
@@ -200,13 +225,13 @@ struct DashboardView: View {
                 ForEach(DashboardFilter.allCases, id: \.self) { f in
                     Button(action: { filter = f }) {
                         Text(f.title)
-                            .font(.body)
+                            .font(.caption)
                             .fontWeight(.medium)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
                             .background(filter == f ? f.color : Color(.systemGray6))
                             .foregroundColor(filter == f ? .white : .primary)
-                            .cornerRadius(12)
+                            .cornerRadius(8)
                     }
                 }
             }
@@ -236,12 +261,12 @@ struct DashboardView: View {
                         .foregroundColor(.primary)
                     
                     // Show payment method info on each row - only for non-cash methods
-                    if let paymentMethod = expense.paymentMethod, paymentMethod != .cash {
+                    if expense.paymentMethod != .cash {
                         HStack(spacing: 4) {
-                            Image(systemName: paymentMethod.icon)
+                            Image(systemName: expense.paymentMethod.icon)
                                 .font(.caption2)
                                 .foregroundColor(.blue)
-                            Text(paymentMethod.rawValue)
+                            Text(expense.paymentMethod.rawValue)
                                 .font(.caption2)
                                 .foregroundColor(.blue)
                         }
@@ -272,18 +297,20 @@ struct DashboardView: View {
         }
         .contentShape(Rectangle())
         .background(isOverdue(req) ? Color.red.opacity(0.07) : (req.status == .paid ? Color.gray.opacity(0.05) : Color.clear))
-        // Right swipe actions - show "Unsettled" and "Repaid" options
+        // Right swipe actions - show different options based on status
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { 
-            Button("Repaid") { 
-                markPaid(req)
-            }
-            .tint(.green)
-            
             if req.status == .paid {
-                Button("Unsettled") { 
+                // Only show "Pending" for paid items
+                Button("Pending") { 
                     restore(req) 
                 }
                 .tint(.red) 
+            } else {
+                // Show "Paid" for unpaid items
+                Button("Paid") { 
+                    markPaid(req)
+                }
+                .tint(.green)
             }
         }
         .onTapGesture {
@@ -387,26 +414,26 @@ struct DashboardView: View {
 }
 
 enum DashboardFilter: CaseIterable {
-    case all, unsettled, repaid
+    case all, pending, paid
     var title: String {
         switch self {
-        case .unsettled: return "Unsettled"
-        case .repaid: return "Repaid"
+        case .pending: return "Pending"
+        case .paid: return "Paid"
         case .all: return "All"
         }
     }
     var color: Color {
         switch self {
-        case .unsettled: return .red
-        case .repaid: return .primary
+        case .pending: return .red
+        case .paid: return .primary
         case .all: return .primary
         }
     }
     func matches(_ r: SplitRequest) -> Bool {
         switch self {
-        case .unsettled:
+        case .pending:
             return r.status != .paid
-        case .repaid:
+        case .paid:
             return r.status == .paid
         case .all:
             return true
@@ -414,19 +441,6 @@ enum DashboardFilter: CaseIterable {
     }
 }
 
-struct ScheduledSplitRequest: Identifiable {
-    let id = UUID()
-    let splitRequestIds: Set<UUID>
-    let scheduledDate: Date
-    let message: String
-    var participants: [String]
-    
-    init(splitRequestIds: Set<UUID>, scheduledDate: Date, message: String, participants: [String]) {
-        self.splitRequestIds = splitRequestIds
-        self.scheduledDate = scheduledDate
-        self.message = message
-        self.participants = participants
-    }
-}
+
 
 

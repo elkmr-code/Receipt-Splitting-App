@@ -5,6 +5,7 @@ struct ItemSelectionView: View {
     let scanResult: ScanResult
     @Binding var selectedItems: Set<UUID>
     let onConfirm: ([ParsedItem]) -> Void
+    let onBack: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     
     // Add local state to ensure selection works properly
@@ -142,8 +143,14 @@ struct ItemSelectionView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
+                    if let onBack = onBack {
+                        Button("Back") {
+                            onBack()
+                        }
+                    } else {
+                        Button("Cancel") {
+                            dismiss()
+                        }
                     }
                 }
                 
@@ -370,6 +377,7 @@ struct ScanningResultsView: View {
     ItemSelectionView(
         scanResult: mockResult,
         selectedItems: .constant(Set()),
-        onConfirm: { _ in }
+        onConfirm: { _ in },
+        onBack: nil
     )
 }

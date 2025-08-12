@@ -511,17 +511,17 @@ struct EditableExpenseItemRow: View {
         }
         .padding()
         .background(Color(.systemBackground))
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button("Edit") {
-                isEditing = true
-            }
-            .tint(.blue)
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button("Delete") {
                 onDelete()
             }
             .tint(.red)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button("Edit") {
+                isEditing = true
+            }
+            .tint(.blue)
         }
         .alert("Error", isPresented: $showingAlert) {
             Button("OK", role: .cancel) {}

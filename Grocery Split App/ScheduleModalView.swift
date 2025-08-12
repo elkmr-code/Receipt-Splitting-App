@@ -91,8 +91,8 @@ struct ScheduleModalView: View {
                     
                     DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
                         .datePickerStyle(.wheel)
-                        .frame(height: 100)
-                        .padding(.horizontal)
+                        .frame(height: 120)
+                        .padding()
                         .background(Color(.systemGray6))
                         .cornerRadius(12)
                 }
