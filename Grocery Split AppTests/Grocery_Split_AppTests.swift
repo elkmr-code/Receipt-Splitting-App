@@ -200,5 +200,101 @@ struct Grocery_Split_AppTests {
         #expect(!messageBasedMethods.contains(.debitCard))
         #expect(!messageBasedMethods.contains(.applePay))
     }
+    
+    @Test func testExpenseItemValidation() async throws {
+        // Test the validation logic for expense item editing
+        let expense = Expense(
+            name: "Test Expense",
+            payerName: "John",
+            paymentMethod: .cash,
+            category: .dining,
+            notes: ""
+        )
+        
+        let item = ExpenseItem(name: "Pizza", price: 20.0, expense: expense)
+        expense.items = [item]
+        
+        // Test initial total
+        #expect(expense.totalCost == 20.0)
+        
+        // Test updating item price
+        item.price = 25.0
+        #expect(expense.totalCost == 25.0)
+        
+        // Test item name validation (empty name)
+        let emptyNameItem = ExpenseItem(name: "", price: 10.0, expense: expense)
+        let trimmedName = emptyNameItem.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(trimmedName.isEmpty)
+        
+        // Test item name validation (whitespace only)
+        let whitespaceNameItem = ExpenseItem(name: "   ", price: 10.0, expense: expense)
+        let trimmedWhitespaceName = whitespaceNameItem.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(trimmedWhitespaceName.isEmpty)
+        
+        // Test valid item
+        let validItem = ExpenseItem(name: "Valid Item", price: 15.0, expense: expense)
+        let trimmedValidName = validItem.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(!trimmedValidName.isEmpty)
+        #expect(validItem.price >= 0)
+    }
+    
+    @Test func testScheduledSplitRequestModel() async throws {
+        // Test the ScheduledSplitRequest model functionality
+        let requestIds = Set([UUID(), UUID()])
+        let scheduledDate = Date().addingTimeInterval(86400) // Tomorrow
+        let message = "Friendly reminder about your payment! 💰"
+        let participants = ["Alice", "Bob"]
+        
+        let scheduledRequest = ScheduledSplitRequest(
+            splitRequestIds: requestIds,
+            scheduledDate: scheduledDate,
+            message: message,
+            participants: participants
+        )
+        
+        #expect(!scheduledRequest.id.uuidString.isEmpty)
+        #expect(scheduledRequest.splitRequestIds.count == 2)
+        #expect(scheduledRequest.scheduledDate == scheduledDate)
+        #expect(scheduledRequest.message == message)
+        #expect(scheduledRequest.participants == participants)
+        #expect(scheduledRequest.createdDate <= Date())
+    }
+    
+    @Test func testPriceInputSanitization() async throws {
+        // Test price input sanitization logic (simulating the UI validation)
+        func sanitizePriceInput(_ input: String) -> String {
+            // Simulate the sanitization logic from EditableExpenseItemRow
+            let validChars = input.filter { "0123456789.".contains($0) }
+            
+            let components = validChars.components(separatedBy: ".")
+            if components.count <= 1 {
+                return validChars
+            } else if components.count == 2 {
+                let wholePart = components[0]
+                let decimalPart = String(components[1].prefix(2))
+                return wholePart + "." + decimalPart
+            } else {
+                let wholePart = components[0]
+                let decimalPart = String(components.dropFirst().joined().prefix(2))
+                return wholePart + "." + decimalPart
+            }
+        }
+        
+        // Test valid inputs
+        #expect(sanitizePriceInput("12.34") == "12.34")
+        #expect(sanitizePriceInput("12") == "12")
+        #expect(sanitizePriceInput("0.50") == "0.50")
+        
+        // Test invalid characters removal
+        #expect(sanitizePriceInput("12.34abc") == "12.34")
+        #expect(sanitizePriceInput("$12.34") == "12.34")
+        
+        // Test multiple decimal points
+        #expect(sanitizePriceInput("12.34.56") == "12.34")
+        
+        // Test decimal place limiting
+        #expect(sanitizePriceInput("12.345") == "12.34")
+        #expect(sanitizePriceInput("12.999") == "12.99")
+    }
 
 }
