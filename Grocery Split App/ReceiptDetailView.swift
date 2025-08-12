@@ -191,10 +191,11 @@ struct ExpenseDetailView: View {
                                 .listRowInsets(EdgeInsets())
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color(.systemBackground))
+                                .frame(height: 80)
                             }
                         }
                         .listStyle(.plain)
-                        .frame(height: CGFloat(expense.items.count * 80))
+                        .frame(minHeight: CGFloat(expense.items.count * 80))
                         .background(Color(.systemGray6))
                         .cornerRadius(12)
                     }

@@ -12,7 +12,7 @@ struct AddExpenseView: View {
     @State private var isProcessing = false
     @State private var parsedItems: [(name: String, price: Double)] = []
     @State private var expenseName = ""
-    @State private var payerName = ""
+    @State private var payerName = "Payer"
     @State private var selectedCategory: ExpenseCategory = .other
     @State private var selectedPaymentMethod: PaymentMethod = .cash
     @State private var notes = ""
@@ -374,6 +374,7 @@ struct AddExpenseView: View {
                                         .foregroundColor(.white)
                                         .cornerRadius(12)
                                 }
+                                .disabled(expenseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || payerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                                 .accessibilityLabel(AccessibilityHelper.saveExpenseButton)
                                 .accessibilityHint("Saves this expense with all items to your records")
                             } else {

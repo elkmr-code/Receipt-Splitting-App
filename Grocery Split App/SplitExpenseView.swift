@@ -21,21 +21,18 @@ struct EnhancedSplitExpenseView: View {
     @State private var finalShareMessage = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
-    @State private var itemAssignments: [UUID: Set<UUID>] = [:] // participantId -> Set of itemIds
-    @State private var showingItemAssignment = false
+
     
     enum SplitMethod: String, CaseIterable {
         case evenSplit = "Even Split"
         case customSplit = "Custom Amounts"
         case percentageSplit = "Percentage Split"
-        case itemBased = "Item-Based Split"
         
         var icon: String {
             switch self {
             case .evenSplit: return "equal.circle"
             case .customSplit: return "slider.horizontal.3"
             case .percentageSplit: return "percent"
-            case .itemBased: return "list.bullet"
             }
         }
         
@@ -44,7 +41,6 @@ struct EnhancedSplitExpenseView: View {
             case .evenSplit: return "Split equally among all participants"
             case .customSplit: return "Set custom amounts for each person"
             case .percentageSplit: return "Split by percentage contribution"
-            case .itemBased: return "Assign specific items to people"
             }
         }
     }
@@ -128,17 +124,7 @@ struct EnhancedSplitExpenseView: View {
         } message: {
             Text(alertMessage)
         }
-        .sheet(isPresented: $showingItemAssignment) {
-            ItemAssignmentView(
-                expense: expense,
-                participants: participants,
-                itemAssignments: $itemAssignments,
-                onComplete: {
-                    calculateItemBasedSplit()
-                    showingItemAssignment = false
-                }
-            )
-        }
+
         .sheet(isPresented: $showingPaymentMethodSelector) {
             PaymentMethodSelectorView(
                 selectedMethod: $selectedPaymentMethodForSharing,
@@ -282,10 +268,7 @@ struct EnhancedSplitExpenseView: View {
                 // Second Row: Percentage Split
                 splitMethodButton(for: .percentageSplit)
                 
-                // Third Row: Item-Based Split
-                splitMethodButton(for: .itemBased)
-                
-                // Fourth Row: Custom Split
+                // Third Row: Custom Split
                 splitMethodButton(for: .customSplit)
             }
         }
@@ -688,13 +671,6 @@ struct EnhancedSplitExpenseView: View {
                 }
             }
             
-        case .itemBased:
-            if !expense.items.isEmpty {
-                showingItemAssignment = true
-                calculateItemBasedSplit()
-            } else {
-                recalculateEvenSplit()
-            }
         }
     }
     
@@ -970,24 +946,7 @@ struct EnhancedSplitExpenseView: View {
         }
     }
 
-    private func calculateItemBasedSplit() {
-        // Reset all amounts first
-        for i in participants.indices {
-            participants[i].amount = 0.0
-            participants[i].percentage = 0.0
-        }
-        
-        // Calculate amounts based on item assignments
-        for i in participants.indices {
-            let participant = participants[i]
-            if let assignedItemIds = itemAssignments[participant.id] {
-                let assignedItems = expense.items.filter { assignedItemIds.contains($0.id) }
-                let totalCost = assignedItems.reduce(0) { $0 + $1.price }
-                participants[i].amount = totalCost
-                participants[i].percentage = expense.totalCost > 0 ? (totalCost / expense.totalCost) * 100 : 0
-            }
-        }
-    }
+
 }
 
 struct SplitParticipant: Identifiable {
