@@ -5,7 +5,7 @@ import SwiftData
 struct ExpenseSplitApp: App {
     var body: some Scene {
         WindowGroup {
-            ExpenseListView()
+            MainTabView()
         }
         .modelContainer(for: [Expense.self, ExpenseItem.self, Receipt.self, SplitRequest.self, ScheduledSplitRequest.self])
     }

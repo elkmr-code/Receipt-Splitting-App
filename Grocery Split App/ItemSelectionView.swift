@@ -10,6 +10,7 @@ struct ItemSelectionView: View {
     
     // Add local state to ensure selection works properly
     @State private var localSelectedItems: Set<UUID> = []
+    @State private var selectionMode: Bool = false // Hide circles until enabled
     
     var body: some View {
         NavigationStack {
@@ -60,8 +61,9 @@ struct ItemSelectionView: View {
 
                 // Selection controls
                 HStack(spacing: 16) {
-                    Button("Select All") {
+                    Button(selectionMode ? "Select All" : "Enable Select") {
                         withAnimation(.easeInOut(duration: 0.2)) {
+                            selectionMode = true
                             localSelectedItems = Set(scanResult.items.map { $0.id })
                             selectedItems = localSelectedItems
                         }
@@ -76,6 +78,7 @@ struct ItemSelectionView: View {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             localSelectedItems.removeAll()
                             selectedItems.removeAll()
+                            selectionMode = false
                         }
                     }
                     .padding(.horizontal, 12)
@@ -100,6 +103,7 @@ struct ItemSelectionView: View {
                                 item: item,
                                 scanType: scanResult.type,
                                 isSelected: localSelectedItems.contains(item.id),
+                                showSelectionIndicator: selectionMode,
                                 onToggle: {
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         if localSelectedItems.contains(item.id) {
@@ -178,17 +182,20 @@ struct ItemSelectionRow: View {
     let item: ParsedItem
     let scanType: ScanType
     let isSelected: Bool
+    let showSelectionIndicator: Bool
     let onToggle: () -> Void
     
     var body: some View {
         Button(action: onToggle) {
             HStack(spacing: 12) {
-                // Selection indicator with animation
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? .blue : .gray)
-                    .font(.title3)
-                    .scaleEffect(isSelected ? 1.1 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
+                // Selection indicator with animation (hidden until selection mode)
+                if showSelectionIndicator {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(isSelected ? .blue : .gray)
+                        .font(.title3)
+                        .scaleEffect(isSelected ? 1.1 : 1.0)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSelected)
+                }
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.name)
@@ -201,13 +208,7 @@ struct ItemSelectionRow: View {
                         Text("From \(scanType.displayName.lowercased())")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        
-                        if item.quantity > 1 {
-                            Text("• Qty: \(item.quantity)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
+                        if item.quantity > 1 { Text("• Qty: \(item.quantity)").font(.caption).foregroundColor(.secondary) }
                         Spacer()
                     }
                 }

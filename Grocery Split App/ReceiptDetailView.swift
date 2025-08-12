@@ -188,15 +188,14 @@ struct ExpenseDetailView: View {
                                         try? modelContext.save()
                                     }
                                 )
-                                .listRowInsets(EdgeInsets())
+                                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                                 .listRowSeparator(.hidden)
-                                .listRowBackground(Color(.systemBackground))
-                                .frame(height: 80)
+                                .listRowBackground(Color.clear)
                             }
                         }
                         .listStyle(.plain)
-                        .frame(minHeight: CGFloat(expense.items.count * 80))
-                        .background(Color(.systemGray6))
+                        .environment(\.defaultMinListRowHeight, 56)
+                        .background(Color.clear)
                         .cornerRadius(12)
                     }
                 }
@@ -515,59 +514,57 @@ struct EditableExpenseItemRow: View {
     var body: some View {
         HStack {
             if isEditing {
-                VStack(spacing: 12) {
-                    TextField("Item name", text: $item.name)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .accessibilityLabel("Item name")
-                        .accessibilityHint("Enter the name of this expense item")
-                    
+                VStack(spacing: 8) {
                     HStack {
+                        TextField("Item name", text: $item.name)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .accessibilityLabel("Item name")
+                        
                         Text("$")
                             .foregroundColor(.secondary)
-                            .font(.body)
+                            .font(.caption)
+                        
                         TextField("0.00", text: $priceText)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .keyboardType(.decimalPad)
-                            .accessibilityLabel("Item price")
-                            .accessibilityHint("Enter the price in dollars")
+                            .frame(width: 80)
+                            .accessibilityLabel("Price")
                             .onChange(of: priceText) { _, newValue in
                                 priceText = sanitizePriceInput(newValue)
                             }
                     }
                     
-                    HStack {
+                    HStack(spacing: 20) {
                         Button("Cancel") {
                             cancelEditing()
                         }
                         .foregroundColor(.red)
-                        .accessibilityLabel("Cancel editing")
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(6)
                         
                         Spacer()
                         
                         Button("Save") {
                             saveChanges()
                         }
-                        .foregroundColor(.blue)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .background(isValidForSaving ? Color.blue : Color.gray)
+                        .cornerRadius(6)
                         .disabled(!isValidForSaving)
-                        .accessibilityLabel("Save changes")
-                        .accessibilityHint(isValidForSaving ? "Save the item changes" : "Complete all fields to save")
                     }
-                    .font(.subheadline)
+                    .font(.caption)
                     .fontWeight(.medium)
                 }
-                .padding(.vertical, 4)
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.name)
-                        .font(.body)
-                        .fontWeight(.medium)
-                        .accessibilityLabel("Item: \(item.name)")
-                    Text("Individual item")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .accessibilityHidden(true)
-                }
+                Text(item.name)
+                    .font(.body)
+                    .fontWeight(.medium)
+                    .accessibilityLabel("Item: \(item.name)")
                 
                 Spacer()
                 
@@ -578,8 +575,9 @@ struct EditableExpenseItemRow: View {
                     .accessibilityLabel("Price: \(item.price, format: .currency(code: "USD"))")
             }
         }
-        .padding()
-        .background(Color(.systemBackground))
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .background(Color.clear)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             // Double tap to edit as fallback

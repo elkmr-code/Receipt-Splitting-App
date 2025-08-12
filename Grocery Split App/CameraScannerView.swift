@@ -2,6 +2,7 @@ import SwiftUI
 import AVFoundation
 import Vision
 import VisionKit
+import PhotosUI
 
 // MARK: - Production Camera Scanner View
 struct CameraScannerView: View {
@@ -708,41 +709,39 @@ struct DocumentCameraView: UIViewControllerRepresentable {
     }
 }
 
-// Photos Picker View
-struct PhotosPickerView: UIViewControllerRepresentable {
+// SwiftUI-native Photos Picker Sheet (iOS 16+)
+struct PhotosPickerView: View {
     let completion: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedItem: PhotosPickerItem?
     
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .photoLibrary
-        picker.allowsEditing = false
-        picker.delegate = context.coordinator
-        return picker
-    }
-    
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-    
-    func makeCoordinator() -> PhotoPickerCoordinator {
-        PhotoPickerCoordinator(self)
-    }
-    
-    class PhotoPickerCoordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let parent: PhotosPickerView
-        
-        init(_ parent: PhotosPickerView) {
-            self.parent = parent
-        }
-        
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            if let image = info[.originalImage] as? UIImage {
-                parent.completion(image)
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                PhotosPicker(selection: $selectedItem, matching: .images) {
+                    Label("Choose Photo", systemImage: "photo.on.rectangle")
+                        .font(.headline)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(Color.blue.opacity(0.1))
+                        .cornerRadius(12)
+                }
+                .padding()
+                
+                Spacer()
             }
-            parent.dismiss()
+            .navigationTitle("Choose Photo")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            parent.dismiss()
+        .onChange(of: selectedItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                if let data = try? await newItem.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    completion(image)
+                }
+                dismiss()
+            }
         }
     }
 }

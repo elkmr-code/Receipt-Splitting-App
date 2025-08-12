@@ -198,7 +198,7 @@ enum ExpenseCategory: String, CaseIterable, Codable {
         case .shopping: return "bag"
         case .travel: return "airplane"
         case .healthcare: return "cross.case"
-        case .other: return "ellipsis.circle"
+        case .other: return "square.grid.2x2"
         }
     }
 }

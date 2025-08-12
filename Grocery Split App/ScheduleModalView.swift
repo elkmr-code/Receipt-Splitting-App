@@ -89,12 +89,12 @@ struct ScheduleModalView: View {
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
                     
+                    // Use wheel without extra background/clipping to avoid visual artifacts on the left
                     DatePicker("Time", selection: $selectedTime, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
                         .datePickerStyle(.wheel)
-                        .frame(height: 120)
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
+                        .frame(height: 150)
+                        .background(Color.clear)
                 }
             }
         }
