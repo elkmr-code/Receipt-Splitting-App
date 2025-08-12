@@ -171,7 +171,7 @@ struct ExpenseDetailView: View {
                         .accessibilityLabel("No items added. This expense doesn't have itemized details yet.")
                         .accessibilityHint("You can add items by editing the expense or importing from a receipt scan.")
                     } else {
-                        LazyVStack(spacing: 1) {
+                        List {
                             ForEach(expense.items.sorted(by: { $0.name < $1.name })) { item in
                                 EditableExpenseItemRow(
                                     item: item,
@@ -188,9 +188,14 @@ struct ExpenseDetailView: View {
                                         try? modelContext.save()
                                     }
                                 )
+                                .listRowInsets(EdgeInsets())
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color(.systemBackground))
                             }
                         }
-                        .background(Color(.systemGray5))
+                        .listStyle(.plain)
+                        .frame(height: CGFloat(expense.items.count * 80))
+                        .background(Color(.systemGray6))
                         .cornerRadius(12)
                     }
                 }
@@ -574,8 +579,12 @@ struct EditableExpenseItemRow: View {
         }
         .padding()
         .background(Color(.systemBackground))
-        .accessibilityElement(children: .contain)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            // Double tap to edit as fallback
+            startEditing()
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button("Delete") {
                 showingDeleteConfirmation = true
             }
