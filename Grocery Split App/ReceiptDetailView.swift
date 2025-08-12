@@ -16,14 +16,17 @@ struct ExpenseDetailView: View {
                         Image(systemName: expense.category.icon)
                             .font(.title2)
                             .foregroundColor(.blue)
+                            .accessibilityHidden(true)
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text(expense.name)
                                 .font(.title2)
                                 .fontWeight(.bold)
+                                .accessibilityLabel("Expense name: \(expense.name)")
                             Text(expense.category.rawValue)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .accessibilityLabel("Category: \(expense.category.rawValue)")
                         }
                         
                         Spacer()
@@ -33,6 +36,8 @@ struct ExpenseDetailView: View {
                                 .font(.title3)
                                 .foregroundColor(.blue)
                         }
+                        .accessibilityLabel("Edit expense")
+                        .accessibilityHint("Edit expense details like name, category, and payment information")
                     }
                     
                     Divider()
@@ -95,6 +100,8 @@ struct ExpenseDetailView: View {
                             .fontWeight(.bold)
                             .foregroundColor(.green)
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Total amount: \(expense.totalCost, format: .currency(code: "USD"))")
                 }
                 .padding()
                 .background(Color(.systemBackground))
@@ -125,28 +132,44 @@ struct ExpenseDetailView: View {
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                             }
+                            .accessibilityLabel("Split bill")
+                            .accessibilityHint("Create split requests for this expense")
                         }
                     }
                     
                     if expense.items.isEmpty {
-                        VStack(spacing: 12) {
+                        VStack(spacing: 16) {
                             Image(systemName: "list.bullet")
-                                .font(.system(size: 40))
-                                .foregroundColor(.gray)
+                                .font(.system(size: 50))
+                                .foregroundColor(.gray.opacity(0.6))
                             
-                            Text("No items added")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                            
-                            Text("This expense doesn't have itemized details")
-                                .font(.body)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
+                            VStack(spacing: 8) {
+                                Text("No items added")
+                                    .font(.headline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.secondary)
+                                
+                                Text("This expense doesn't have itemized details yet. You can add items by editing the expense or importing from a receipt scan.")
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .lineLimit(nil)
+                            }
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 40)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(12)
+                        .padding(.vertical, 50)
+                        .padding(.horizontal, 20)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color(.systemGray6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(Color(.systemGray4), lineWidth: 1)
+                                )
+                        )
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("No items added. This expense doesn't have itemized details yet.")
+                        .accessibilityHint("You can add items by editing the expense or importing from a receipt scan.")
                     } else {
                         LazyVStack(spacing: 1) {
                             ForEach(expense.items.sorted(by: { $0.name < $1.name })) { item in
@@ -155,10 +178,14 @@ struct ExpenseDetailView: View {
                                     onUpdate: { updatedItem in
                                         if let index = expense.items.firstIndex(where: { $0.id == updatedItem.id }) {
                                             expense.items[index] = updatedItem
+                                            // Trigger model context save for real-time updates
+                                            try? modelContext.save()
                                         }
                                     },
                                     onDelete: {
                                         expense.items.removeAll { $0.id == item.id }
+                                        // Trigger model context save for real-time updates
+                                        try? modelContext.save()
                                     }
                                 )
                             }
@@ -177,6 +204,8 @@ struct ExpenseDetailView: View {
                 Button(action: shareExpense) {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .accessibilityLabel("Share expense")
+                .accessibilityHint("Share expense details with others")
             }
         }
         .sheet(isPresented: $showingEditSheet) {
@@ -445,6 +474,7 @@ struct EditableExpenseItemRow: View {
     @State private var priceText = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @State private var showingDeleteConfirmation = false
     
     init(item: ExpenseItem, onUpdate: @escaping (ExpenseItem) -> Void, onDelete: @escaping () -> Void) {
         self._item = State(initialValue: item)
@@ -453,34 +483,58 @@ struct EditableExpenseItemRow: View {
         self._priceText = State(initialValue: String(format: "%.2f", item.price))
     }
     
+    private var isValidForSaving: Bool {
+        let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let priceValue = Double(sanitizedPriceText)
+        return !trimmedName.isEmpty && priceValue != nil && priceValue! >= 0
+    }
+    
+    private var sanitizedPriceText: String {
+        // Remove any invalid characters and ensure proper decimal format
+        let filtered = priceText.filter { "0123456789.".contains($0) }
+        let components = filtered.components(separatedBy: ".")
+        
+        if components.count <= 1 {
+            return filtered
+        } else if components.count == 2 {
+            let wholePart = components[0]
+            let decimalPart = String(components[1].prefix(2))
+            return wholePart + "." + decimalPart
+        } else {
+            // Multiple decimal points - keep only the first one
+            return components[0] + "." + components.dropFirst().joined()
+        }
+    }
+    
     var body: some View {
         HStack {
             if isEditing {
-                VStack(spacing: 8) {
+                VStack(spacing: 12) {
                     TextField("Item name", text: $item.name)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .accessibilityLabel("Item name")
+                        .accessibilityHint("Enter the name of this expense item")
                     
                     HStack {
                         Text("$")
                             .foregroundColor(.secondary)
+                            .font(.body)
                         TextField("0.00", text: $priceText)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .keyboardType(.decimalPad)
+                            .accessibilityLabel("Item price")
+                            .accessibilityHint("Enter the price in dollars")
                             .onChange(of: priceText) { _, newValue in
-                                // Only allow valid decimal numbers
-                                let filtered = newValue.filter { "0123456789.".contains($0) }
-                                if filtered != newValue {
-                                    priceText = filtered
-                                }
+                                priceText = sanitizePriceInput(newValue)
                             }
                     }
                     
                     HStack {
                         Button("Cancel") {
-                            isEditing = false
-                            priceText = String(format: "%.2f", item.price)
+                            cancelEditing()
                         }
                         .foregroundColor(.red)
+                        .accessibilityLabel("Cancel editing")
                         
                         Spacer()
                         
@@ -488,17 +542,25 @@ struct EditableExpenseItemRow: View {
                             saveChanges()
                         }
                         .foregroundColor(.blue)
-                        .disabled(item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || priceText.isEmpty)
+                        .disabled(!isValidForSaving)
+                        .accessibilityLabel("Save changes")
+                        .accessibilityHint(isValidForSaving ? "Save the item changes" : "Complete all fields to save")
                     }
+                    .font(.subheadline)
+                    .fontWeight(.medium)
                 }
+                .padding(.vertical, 4)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name)
                         .font(.body)
                         .fontWeight(.medium)
+                        .accessibilityLabel("Item: \(item.name)")
                     Text("Individual item")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                        .accessibilityHidden(true)
                 }
                 
                 Spacer()
@@ -507,21 +569,33 @@ struct EditableExpenseItemRow: View {
                     .font(.body)
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
+                    .accessibilityLabel("Price: \(item.price, format: .currency(code: "USD"))")
             }
         }
         .padding()
         .background(Color(.systemBackground))
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .accessibilityElement(children: .contain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button("Delete") {
-                onDelete()
+                showingDeleteConfirmation = true
             }
             .tint(.red)
+            .accessibilityLabel("Delete item")
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button("Edit") {
-                isEditing = true
+                startEditing()
             }
             .tint(.blue)
+            .accessibilityLabel("Edit item")
+        }
+        .alert("Delete Item", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deleteItem()
+            }
+        } message: {
+            Text("Are you sure you want to delete \"\(item.name)\"? This action cannot be undone.")
         }
         .alert("Error", isPresented: $showingAlert) {
             Button("OK", role: .cancel) {}
@@ -530,22 +604,80 @@ struct EditableExpenseItemRow: View {
         }
     }
     
+    private func sanitizePriceInput(_ input: String) -> String {
+        // Remove any invalid characters first
+        let validChars = input.filter { "0123456789.".contains($0) }
+        
+        // Handle multiple decimal points
+        let components = validChars.components(separatedBy: ".")
+        if components.count <= 1 {
+            return validChars
+        } else if components.count == 2 {
+            let wholePart = components[0]
+            let decimalPart = String(components[1].prefix(2)) // Limit to 2 decimal places
+            return wholePart + "." + decimalPart
+        } else {
+            // Multiple decimal points - keep only the first one
+            let wholePart = components[0]
+            let decimalPart = String(components.dropFirst().joined().prefix(2))
+            return wholePart + "." + decimalPart
+        }
+    }
+    
+    private func startEditing() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            isEditing = true
+        }
+        
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+    }
+    
+    private func cancelEditing() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            isEditing = false
+            priceText = String(format: "%.2f", item.price)
+            item.name = item.name // Reset any unsaved name changes
+        }
+    }
+    
+    private func deleteItem() {
+        // Haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+        impactFeedback.impactOccurred()
+        
+        onDelete()
+    }
+    
     private func saveChanges() {
-        guard !item.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        guard !trimmedName.isEmpty else {
             alertMessage = "Item name cannot be empty"
             showingAlert = true
             return
         }
         
-        guard let price = Double(priceText), price >= 0 else {
-            alertMessage = "Please enter a valid price"
+        guard let price = Double(sanitizedPriceText), price >= 0 else {
+            alertMessage = "Please enter a valid price (0.00 or higher)"
             showingAlert = true
             return
         }
         
+        // Ensure name is trimmed
+        item.name = trimmedName
         item.price = price
+        
+        // Haptic feedback for successful save
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
         onUpdate(item)
-        isEditing = false
+        
+        withAnimation(.easeInOut(duration: 0.3)) {
+            isEditing = false
+        }
     }
 }
 
