@@ -222,3 +222,9 @@ class DashboardViewModel: ObservableObject {
         }
     }
 }
+
+// Lightweight wrapper to inject the same view model to child views that need to call methods
+final class DashboardViewModelWrapper: ObservableObject {
+    let viewModel: DashboardViewModel
+    init(viewModel: DashboardViewModel) { self.viewModel = viewModel }
+}

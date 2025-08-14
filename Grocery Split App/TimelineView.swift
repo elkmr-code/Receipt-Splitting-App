@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Charts
+import UIKit
 
 // MARK: - Main Timeline View
 struct TimelineView: View {
@@ -13,6 +14,7 @@ struct TimelineView: View {
     @State private var showingItemSelection = false
     @State private var selectedScanItems: Set<UUID> = []
     @State private var selectedExpense: Expense?
+    @State private var showingAddExpense = false
     
     var body: some View {
         NavigationStack {
@@ -33,15 +35,20 @@ struct TimelineView: View {
                     // Recent Expenses
                     RecentExpensesView(
                         expenses: viewModel.recentExpenses,
-                        onTap: { expense in
-                            selectedExpense = expense
-                        }
+                        onTap: { expense in selectedExpense = expense }
                     )
+                    .environmentObject(DashboardViewModelWrapper(viewModel: viewModel))
                 }
                 .padding()
             }
-            .navigationTitle("Timeline")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Timeline")
+                        .font(.largeTitle).fontWeight(.bold)
+                        .onTapGesture(count: 5) { debugLoadDemoReceipt() }
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 VStack(spacing: 14) {
                     // Manual Add
@@ -163,6 +170,23 @@ private extension TimelineView {
         try? modelContext.save()
         viewModel.fetchExpenses()
         return expense
+    }
+    
+    // Hidden developer action: demo parser on 5x title tap
+    func debugLoadDemoReceipt() {
+        guard let demo = UIImage(named: "DemoReceipt") else { return }
+        Task {
+            if let payload = try? await BarcodeService().scanBarcode(from: demo),
+               let receiptData = BarcodeService().parseReceiptData(from: payload) {
+                let items = ProductionReceiptParser().parseItems(from: receiptData)
+                let result = ScanResult(type: .barcode, sourceId: receiptData.transactionId, items: items, originalText: payload, image: demo)
+                await MainActor.run { self.currentScanResult = result }
+            } else if let text = try? await OCRService().recognizeText(from: demo) {
+                let parsed = ReceiptParser.parseReceiptTextEnhanced(text)
+                let result = ScanResult(type: .ocr, sourceId: "DEMO", items: parsed.items, originalText: text, image: demo)
+                await MainActor.run { self.currentScanResult = result }
+            }
+        }
     }
 }
 
@@ -344,6 +368,8 @@ struct BudgetProgressView: View {
 struct RecentExpensesView: View {
     let expenses: [Expense]
     let onTap: (Expense) -> Void
+    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var dashboardVM: DashboardViewModelWrapper
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -379,6 +405,13 @@ struct RecentExpensesView: View {
                                 .foregroundColor(.primary)
                         }
                         .padding(.vertical, 8)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Delete", role: .destructive) {
+                            modelContext.delete(expense)
+                            try? modelContext.save()
+                            dashboardVM.viewModel.fetchExpenses()
+                        }
                     }
                     
                     if expense.id != expenses.last?.id {
