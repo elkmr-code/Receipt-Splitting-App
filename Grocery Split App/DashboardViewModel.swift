@@ -46,7 +46,13 @@ struct CategorySpending: Identifiable {
 @MainActor
 class DashboardViewModel: ObservableObject {
     // MARK: - Published Properties
-    @Published var selectedTimeFrame: TimeFrame = .week
+    @Published var selectedTimeFrame: TimeFrame = .week {
+        didSet {
+            if selectedTimeFrame != oldValue {
+                fetchExpenses()
+            }
+        }
+    }
     @Published var totalSpending: Double = 0.0
     @Published var categoryBreakdown: [CategorySpending] = []
     @Published var budgetAmount: Double = 1000.0 // Default budget
@@ -63,6 +69,17 @@ class DashboardViewModel: ObservableObject {
     // MARK: - Initialization
     init() {
         loadBudgetFromUserDefaults()
+        setupTimeFrameObserver()
+    }
+    
+    private func setupTimeFrameObserver() {
+        // Additional observer for selectedTimeFrame changes using Combine
+        $selectedTimeFrame
+            .dropFirst() // Skip initial value
+            .sink { [weak self] _ in
+                self?.fetchExpenses()
+            }
+            .store(in: &cancellables)
     }
     
     func setModelContext(_ context: ModelContext) {

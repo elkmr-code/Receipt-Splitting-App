@@ -14,7 +14,11 @@ struct ScheduleModalView: View {
     @State private var customMessage = "Friendly reminder about your payment! 💰"
     
     var filteredSelectedRequests: [SplitRequest] {
-        allRequests.filter { selectedRequests.contains($0.id) }
+        // Show all requests if none specifically selected, otherwise show only selected ones
+        if selectedRequests.isEmpty {
+            return allRequests
+        }
+        return allRequests.filter { selectedRequests.contains($0.id) }
     }
     
     var body: some View {
@@ -54,8 +58,14 @@ struct ScheduleModalView: View {
             }
         }
         .onAppear {
-            scheduleSelection = selectedRequests
-            scheduleSelectAll = scheduleSelection.count == filteredSelectedRequests.count
+            // Initialize with selected requests or all requests if none selected
+            if selectedRequests.isEmpty {
+                scheduleSelection = Set(allRequests.map { $0.id })
+                scheduleSelectAll = true
+            } else {
+                scheduleSelection = selectedRequests
+                scheduleSelectAll = scheduleSelection.count == filteredSelectedRequests.count && !filteredSelectedRequests.isEmpty
+            }
         }
     }
     
@@ -244,9 +254,11 @@ struct ScheduleModalView: View {
     
     private func toggleSelectAll() {
         if scheduleSelectAll {
+            // Deselect all
             scheduleSelection.removeAll()
             scheduleSelectAll = false
         } else {
+            // Select all available participants
             scheduleSelection = Set(filteredSelectedRequests.map { $0.id })
             scheduleSelectAll = true
         }
@@ -259,7 +271,8 @@ struct ScheduleModalView: View {
             scheduleSelection.insert(request.id)
         }
         
-        scheduleSelectAll = scheduleSelection.count == filteredSelectedRequests.count
+        // Update select all state based on current selection
+        scheduleSelectAll = scheduleSelection.count == filteredSelectedRequests.count && !filteredSelectedRequests.isEmpty
     }
     
     private func scheduleReminder() {

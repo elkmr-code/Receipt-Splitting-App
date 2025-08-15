@@ -171,7 +171,7 @@ struct ExpenseDetailView: View {
                         .accessibilityLabel("No items added. This expense doesn't have itemized details yet.")
                         .accessibilityHint("You can add items by editing the expense or importing from a receipt scan.")
                     } else {
-                        List {
+                        VStack(spacing: 0) {
                             ForEach(expense.items.sorted(by: { $0.name < $1.name })) { item in
                                 EditableExpenseItemRow(
                                     item: item,
@@ -188,14 +188,19 @@ struct ExpenseDetailView: View {
                                         try? modelContext.save()
                                     }
                                 )
-                                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
+                                .background(Color(.systemBackground))
+                                .cornerRadius(8)
+                                .shadow(color: .black.opacity(0.05), radius: 2)
+                                .padding(.vertical, 2)
+                                
+                                if item.id != expense.items.sorted(by: { $0.name < $1.name }).last?.id {
+                                    Divider()
+                                        .padding(.horizontal)
+                                }
                             }
                         }
-                        .listStyle(.plain)
-                        .environment(\.defaultMinListRowHeight, 56)
-                        .background(Color.clear)
+                        .padding()
+                        .background(Color(.systemGray6).opacity(0.5))
                         .cornerRadius(12)
                     }
                 }
@@ -583,16 +588,26 @@ struct EditableExpenseItemRow: View {
             // Double tap to edit as fallback
             startEditing()
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button("Delete") {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
                 showingDeleteConfirmation = true
+                // Haptic feedback for delete action
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
             .tint(.red)
             .accessibilityLabel("Delete item")
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button("Edit") {
+            Button {
                 startEditing()
+                // Haptic feedback for edit action
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+            } label: {
+                Label("Edit", systemImage: "pencil")
             }
             .tint(.blue)
             .accessibilityLabel("Edit item")
@@ -633,7 +648,7 @@ struct EditableExpenseItemRow: View {
     }
     
     private func startEditing() {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8, blendDuration: 0)) {
             isEditing = true
         }
         
@@ -683,7 +698,7 @@ struct EditableExpenseItemRow: View {
         
         onUpdate(item)
         
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8, blendDuration: 0)) {
             isEditing = false
         }
     }

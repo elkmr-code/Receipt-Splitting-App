@@ -370,6 +370,8 @@ struct RecentExpensesView: View {
     let onTap: (Expense) -> Void
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var dashboardVM: DashboardViewModelWrapper
+    @State private var expenseToDelete: Expense?
+    @State private var showingDeleteConfirmation = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -406,11 +408,10 @@ struct RecentExpensesView: View {
                         }
                         .padding(.vertical, 8)
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button("Delete", role: .destructive) {
-                            modelContext.delete(expense)
-                            try? modelContext.save()
-                            dashboardVM.viewModel.fetchExpenses()
+                            expenseToDelete = expense
+                            showingDeleteConfirmation = true
                         }
                     }
                     
@@ -424,6 +425,27 @@ struct RecentExpensesView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.05), radius: 10)
+        .alert("Delete Expense", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                expenseToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let expense = expenseToDelete {
+                    deleteExpense(expense)
+                }
+                expenseToDelete = nil
+            }
+        } message: {
+            if let expense = expenseToDelete {
+                Text("Are you sure you want to delete \"\(expense.name)\"? This action cannot be undone.")
+            }
+        }
+    }
+    
+    private func deleteExpense(_ expense: Expense) {
+        modelContext.delete(expense)
+        try? modelContext.save()
+        dashboardVM.viewModel.fetchExpenses()
     }
 }
 
