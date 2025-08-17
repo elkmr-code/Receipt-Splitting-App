@@ -180,12 +180,14 @@ struct ExpenseDetailView: View {
                                             expense.items[index] = updatedItem
                                             // Trigger model context save for real-time updates
                                             try? modelContext.save()
+                                            NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
                                         }
                                     },
                                     onDelete: {
                                         expense.items.removeAll { $0.id == item.id }
                                         // Trigger model context save for real-time updates
                                         try? modelContext.save()
+                                        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
                                     }
                                 )
                                 .background(Color(.systemBackground))
@@ -584,14 +586,14 @@ struct EditableExpenseItemRow: View {
         .padding(.horizontal, 16)
         .background(Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            // Double tap to edit as fallback
+        .onTapGesture {
+            // Single tap to edit for smoother UX
             startEditing()
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        // Swipe right to delete
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button {
                 showingDeleteConfirmation = true
-                // Haptic feedback for delete action
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
             } label: {
@@ -600,10 +602,10 @@ struct EditableExpenseItemRow: View {
             .tint(.red)
             .accessibilityLabel("Delete item")
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+        // Swipe left to edit
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button {
                 startEditing()
-                // Haptic feedback for edit action
                 let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                 impactFeedback.impactOccurred()
             } label: {

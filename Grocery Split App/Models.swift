@@ -52,6 +52,12 @@ enum RequestStatus: String, CaseIterable, Codable {
     }
 }
 
+// MARK: - App Notifications
+extension Notification.Name {
+    static let expenseDataChanged = Notification.Name("ExpenseDataChangedNotification")
+    static let splitRequestsChanged = Notification.Name("SplitRequestsChangedNotification")
+}
+
 // MARK: - Request Priority
 enum RequestPriority: String, CaseIterable, Codable {
     case normal = "Normal"

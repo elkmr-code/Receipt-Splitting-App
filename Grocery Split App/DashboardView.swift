@@ -212,6 +212,9 @@ struct DashboardView: View {
         .background(Color(.systemBackground))
         .cornerRadius(8)
         .shadow(radius: 1)
+        .contentShape(Rectangle())
+        // Prevent row tap from triggering deletion; only the trash icon deletes
+        .onTapGesture { }
     }
     
     private func deleteScheduledRequest(_ scheduledRequest: ScheduledSplitRequest) {
@@ -329,6 +332,7 @@ struct DashboardView: View {
     private func markPaid(_ r: SplitRequest) {
         r.status = .paid
         try? modelContext.save()
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
 
     private func markOverdue(_ r: SplitRequest) {
@@ -342,6 +346,7 @@ struct DashboardView: View {
         r.priority = .normal
         r.nextSendDate = nil
         try? modelContext.save()
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
 
     private func bulkUpdate(_ status: RequestStatus) {

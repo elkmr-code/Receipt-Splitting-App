@@ -88,6 +88,9 @@ struct TimelineView: View {
         .sheet(isPresented: $showingAddExpense) {
             QuickAddExpenseView()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .expenseDataChanged)) { _ in
+            viewModel.fetchExpenses()
+        }
         .confirmationDialog("Scan", isPresented: $showingScanOptions) {
             Button("Receipt (OCR)") { showingReceiptCamera = true }
             Button("Barcode / QR") { showingCodeCamera = true }
@@ -114,6 +117,7 @@ struct TimelineView: View {
                     selectedExpense = created
                     currentScanResult = nil
                     selectedScanItems.removeAll()
+                    NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
                 },
                 onBack: nil
             )
@@ -244,13 +248,34 @@ struct CategoryChartView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 200)
             } else {
-                // Bar Chart
+                // Bar Chart with left-inner owed segment and right remainder
                 Chart(viewModel.categoryBreakdown) { category in
+                    let owed = min(max(category.owedAmount, 0), category.amount)
+                    let remainder = max(category.amount - owed, 0)
+                    // Left segment (owed)
                     BarMark(
-                        x: .value("Amount", category.amount),
+                        xStart: .value("Start", 0),
+                        xEnd: .value("Owed", owed),
                         y: .value("Category", category.category)
                     )
-                    .foregroundStyle(category.color)
+                    .foregroundStyle(Color.blue)
+                    .annotation(position: .overlay, alignment: .leading) {
+                        if owed > 0 {
+                            Text("$\(owed, specifier: "%.0f")")
+                                .font(.caption2)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 4)
+                                .background(Color.blue.opacity(0.85))
+                                .cornerRadius(4)
+                        }
+                    }
+                    // Right segment (paid or not owed yet)
+                    BarMark(
+                        xStart: .value("Start", owed),
+                        xEnd: .value("Total", owed + remainder),
+                        y: .value("Category", category.category)
+                    )
+                    .foregroundStyle(category.color.opacity(0.35))
                     .annotation(position: .trailing) {
                         Text("$\(category.amount, specifier: "%.0f")")
                             .font(.caption)
@@ -385,38 +410,58 @@ struct RecentExpensesView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
             } else {
-                ForEach(expenses) { expense in
-                    Button(action: { onTap(expense) }) {
+                // VStack inside outer ScrollView to avoid nested scroll issues
+                VStack(spacing: 0) {
+                    // Toolbar row
+                    HStack {
+                        Button(action: toggleSelectAll) {
+                            Text(isSelectionMode ? (selectAll ? "Deselect All" : "Select All") : "Select All")
+                        }
+                        Spacer()
+                        if isSelectionMode {
+                            if !selection.isEmpty {
+                                Button(role: .destructive) { deleteSelected() } label: { Label("Delete", systemImage: "trash") }
+                            }
+                            Button("Done") { exitSelection() }
+                        }
+                    }
+                    .padding(.bottom, 8)
+
+                    ForEach(expenses) { expense in
                         HStack {
+                            if isSelectionMode {
+                                Button(action: { toggle(expense) }) {
+                                    Image(systemName: selection.contains(expense.id) ? "checkmark.circle.fill" : "circle")
+                                }.buttonStyle(.plain)
+                            }
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(expense.name)
                                     .font(.subheadline)
                                     .fontWeight(.medium)
                                     .foregroundColor(.primary)
-                                
                                 Text(expense.date.formatted(date: .abbreviated, time: .omitted))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
-                            
                             Spacer()
-                            
                             Text("$\(expense.totalCost, specifier: "%.2f")")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.primary)
                         }
                         .padding(.vertical, 8)
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Delete", role: .destructive) {
-                            expenseToDelete = expense
-                            showingDeleteConfirmation = true
+                        .contentShape(Rectangle())
+                        .onTapGesture { onTap(expense) }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button("Delete", role: .destructive) {
+                                expenseToDelete = expense
+                                showingDeleteConfirmation = true
+                            }
                         }
-                    }
-                    
-                    if expense.id != expenses.last?.id {
-                        Divider()
+
+                        if expense.id != expenses.last?.id {
+                            Divider()
+                        }
                     }
                 }
             }
@@ -440,6 +485,36 @@ struct RecentExpensesView: View {
                 Text("Are you sure you want to delete \"\(expense.name)\"? This action cannot be undone.")
             }
         }
+    }
+    @State private var selection: Set<UUID> = []
+    @State private var selectAll: Bool = false
+    @State private var isSelectionMode: Bool = false
+    private func toggle(_ expense: Expense) {
+        if selection.contains(expense.id) { selection.remove(expense.id) } else { selection.insert(expense.id) }
+        selectAll = selection.count == expenses.count
+    }
+    private func toggleSelectAll() {
+        if !isSelectionMode {
+            isSelectionMode = true
+            selection = Set(expenses.map { $0.id })
+            selectAll = true
+            return
+        }
+        if selectAll { selection.removeAll() } else { selection = Set(expenses.map { $0.id }) }
+        selectAll.toggle()
+    }
+    private func deleteSelected() {
+        for id in selection {
+            if let e = expenses.first(where: { $0.id == id }) { modelContext.delete(e) }
+        }
+        try? modelContext.save()
+        exitSelection()
+        dashboardVM.viewModel.fetchExpenses()
+    }
+    private func exitSelection() {
+        isSelectionMode = false
+        selectAll = false
+        selection.removeAll()
     }
     
     private func deleteExpense(_ expense: Expense) {
@@ -567,5 +642,6 @@ struct QuickAddExpenseView: View {
         
         try? modelContext.save()
         dismiss()
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
     }
 }

@@ -37,6 +37,7 @@ struct CategorySpending: Identifiable {
     let id = UUID()
     let category: String
     let amount: Double
+    let owedAmount: Double // Outstanding amount others owe you for this category
     let color: Color
     
     var percentage: Double = 0.0
@@ -70,6 +71,7 @@ class DashboardViewModel: ObservableObject {
     init() {
         loadBudgetFromUserDefaults()
         setupTimeFrameObserver()
+        setupChangeObservers()
     }
     
     private func setupTimeFrameObserver() {
@@ -79,6 +81,15 @@ class DashboardViewModel: ObservableObject {
             .sink { [weak self] _ in
                 self?.fetchExpenses()
             }
+            .store(in: &cancellables)
+    }
+    
+    private func setupChangeObservers() {
+        NotificationCenter.default.publisher(for: .expenseDataChanged)
+            .sink { [weak self] _ in self?.fetchExpenses() }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: .splitRequestsChanged)
+            .sink { [weak self] _ in self?.fetchExpenses() }
             .store(in: &cancellables)
     }
     
@@ -119,8 +130,8 @@ class DashboardViewModel: ObservableObject {
         // Update spending progress
         updateSpendingProgress()
         
-        // Store recent expenses (last 10)
-        recentExpenses = Array(expenses.prefix(10))
+        // Show all expenses (for full scrolling list in Timeline)
+        recentExpenses = expenses
         
         // Mark dates with expenses for calendar
         markDatesWithExpenses(from: expenses)
@@ -129,9 +140,17 @@ class DashboardViewModel: ObservableObject {
     // MARK: - Category Breakdown
     private func calculateCategoryBreakdown(from expenses: [Expense]) {
         var categoryTotals: [ExpenseCategory: Double] = [:]
+        var categoryOwed: [ExpenseCategory: Double] = [:]
         
+        let currentUserName = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
         for expense in expenses {
             categoryTotals[expense.category, default: 0] += expense.totalCost
+            // Sum outstanding split requests (exclude paid). Clamp to [0, expense.totalCost]
+            let outstandingRaw = expense.splitRequests
+                .filter { $0.status != .paid && $0.participantName != currentUserName }
+                .reduce(0.0) { $0 + max(0, $1.amount) }
+            let outstanding = min(max(outstandingRaw, 0), expense.totalCost)
+            categoryOwed[expense.category, default: 0] += outstanding
         }
         
         let total = categoryTotals.values.reduce(0, +)
@@ -140,6 +159,7 @@ class DashboardViewModel: ObservableObject {
             var spending = CategorySpending(
                 category: category.rawValue,
                 amount: amount,
+                owedAmount: categoryOwed[category, default: 0],
                 color: colorForCategory(category)
             )
             spending.percentage = total > 0 ? (amount / total) * 100 : 0
@@ -169,7 +189,23 @@ class DashboardViewModel: ObservableObject {
     }
     
     private func updateSpendingProgress() {
-        spendingProgress = budgetAmount > 0 ? min(totalSpending / budgetAmount, 1.0) : 0.0
+        // Always compute month-to-date progress for the bar, regardless of selected timeframe
+        if let modelContext = modelContext {
+            let now = Date()
+            let startOfMonth = Calendar.current.dateInterval(of: .month, for: now)!.start
+            let descriptor = FetchDescriptor<Expense>(
+                predicate: #Predicate<Expense> { e in e.date >= startOfMonth && e.date <= now },
+                sortBy: []
+            )
+            if let expensesThisMonth = try? modelContext.fetch(descriptor) {
+                let spendingMTD = expensesThisMonth.reduce(0) { $0 + $1.totalCost }
+                spendingProgress = budgetAmount > 0 ? min(spendingMTD / budgetAmount, 1.0) : 0.0
+            } else {
+                spendingProgress = 0
+            }
+        } else {
+            spendingProgress = budgetAmount > 0 ? min(totalSpending / budgetAmount, 1.0) : 0.0
+        }
         
         // Check if over budget and trigger notification placeholder
         if spendingProgress >= 1.0 {
