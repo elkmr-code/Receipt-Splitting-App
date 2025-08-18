@@ -43,6 +43,15 @@ struct CategorySpending: Identifiable {
     var percentage: Double = 0.0
 }
 
+// MARK: - Split Summary Model for Enhanced Pie Chart
+struct SplitSummary: Identifiable {
+    let id = UUID()
+    let label: String
+    let amount: Double
+    let color: Color
+    var percentage: Double = 0.0
+}
+
 // MARK: - Dashboard View Model
 @MainActor
 class DashboardViewModel: ObservableObject {
@@ -56,6 +65,7 @@ class DashboardViewModel: ObservableObject {
     }
     @Published var totalSpending: Double = 0.0
     @Published var categoryBreakdown: [CategorySpending] = []
+    @Published var splitSummary: [SplitSummary] = [] // For enhanced pie chart showing "People owe me" vs "You spent"
     @Published var budgetAmount: Double = 1000.0 // Default budget
     @Published var spendingProgress: Double = 0.0
     @Published var selectedDate: Date? = nil
@@ -127,6 +137,9 @@ class DashboardViewModel: ObservableObject {
         // Calculate category breakdown including user's net spend vs owed
         calculateCategoryBreakdown(from: filteredExpenses)
         
+        // Calculate split summary for enhanced pie chart
+        calculateSplitSummary(from: filteredExpenses)
+        
         // Update spending progress
         updateSpendingProgress()
         
@@ -183,6 +196,53 @@ class DashboardViewModel: ObservableObject {
         case .travel: return .cyan
         case .healthcare: return .red
         case .other: return .indigo
+        }
+    }
+    
+    // MARK: - Split Summary Calculation
+    private func calculateSplitSummary(from expenses: [Expense]) {
+        let currentUserNameRaw = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
+        let currentUserName = currentUserNameRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        
+        var totalSpent: Double = 0.0
+        var totalOwedToUser: Double = 0.0
+        
+        for expense in expenses {
+            totalSpent += expense.totalCost
+            
+            // Calculate how much people owe the user for this expense
+            let owedAmount = expense.splitRequests
+                .filter { req in
+                    guard req.status != .paid else { return false }
+                    let participant = req.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    return participant != currentUserName
+                }
+                .reduce(0.0) { $0 + max(0, $1.amount) }
+            
+            totalOwedToUser += min(max(owedAmount, 0), expense.totalCost)
+        }
+        
+        let netUserSpent = max(0, totalSpent - totalOwedToUser)
+        let total = totalSpent
+        
+        if total > 0 {
+            var userSpentItem = SplitSummary(
+                label: "You spent",
+                amount: netUserSpent,
+                color: .blue
+            )
+            userSpentItem.percentage = (netUserSpent / total) * 100
+            
+            var peopleOweItem = SplitSummary(
+                label: "People owe me",
+                amount: totalOwedToUser,
+                color: .green
+            )
+            peopleOweItem.percentage = (totalOwedToUser / total) * 100
+            
+            splitSummary = [userSpentItem, peopleOweItem].filter { $0.amount > 0 }
+        } else {
+            splitSummary = []
         }
     }
     
