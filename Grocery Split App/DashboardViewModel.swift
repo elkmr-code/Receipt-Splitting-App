@@ -124,7 +124,7 @@ class DashboardViewModel: ObservableObject {
         // Calculate total spending
         totalSpending = filteredExpenses.reduce(0) { $0 + $1.totalCost }
         
-        // Calculate category breakdown
+        // Calculate category breakdown including user's net spend vs owed
         calculateCategoryBreakdown(from: filteredExpenses)
         
         // Update spending progress

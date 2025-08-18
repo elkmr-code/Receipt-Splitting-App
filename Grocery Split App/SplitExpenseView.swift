@@ -107,6 +107,7 @@ struct EnhancedSplitExpenseView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
+                        persistSplitAsRequests()
                         dismiss()
                     }
                     .disabled(participants.isEmpty)
@@ -641,6 +642,31 @@ struct EnhancedSplitExpenseView: View {
         participants.removeAll { $0.id == participant.id }
         selectedParticipants.remove(participant.id)
         recalculateSplit()
+    }
+    
+    private func persistSplitAsRequests() {
+        // Remove old split requests for this expense to keep in sync
+        for r in expense.splitRequests { modelContext.delete(r) }
+        // Create new ones excluding the current user
+        let currentUser = (UserDefaults.standard.string(forKey: "userName") ?? expense.payerName)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        for p in participants {
+            let nameLower = p.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !p.name.isEmpty, nameLower != currentUser else { continue }
+            let req = SplitRequest(
+                participantName: p.name,
+                amount: p.amount,
+                status: .pending,
+                messageText: "",
+                priority: .normal,
+                expense: expense
+            )
+            modelContext.insert(req)
+        }
+        try? modelContext.save()
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
     }
     
     private func recalculateSplit() {

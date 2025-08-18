@@ -134,7 +134,7 @@ struct GroupsView: View {
                             HStack {
                                 Text(group)
                                 Spacer()
-                                Button(role: .destructive) { deleteGroup(named: group) } label: { Image(systemName: "trash") }
+                                Button(role: .destructive) { groupPendingDelete = group } label: { Image(systemName: "trash") }
                                     .buttonStyle(.plain)
                             }
                         }
@@ -147,26 +147,23 @@ struct GroupsView: View {
                     if isSelectionMode {
                         let allSelected = selectedForSchedule.count == splitRequests.count && !splitRequests.isEmpty
                         Button(allSelected ? "Deselect All" : "Select All") {
-                            if allSelected {
-                                selectedForSchedule.removeAll()
-                            } else {
-                                selectedForSchedule = Set(splitRequests.map { $0.id })
-                            }
+                            if allSelected { selectedForSchedule.removeAll() } else { selectedForSchedule = Set(splitRequests.map { $0.id }) }
                         }
-                        Button("Paid") { self.pendingAction = .paid }.disabled(selectedForSchedule.isEmpty)
-                        Button("Pending") { self.pendingAction = .pending }.disabled(selectedForSchedule.isEmpty)
-                        Button("Delete", role: .destructive) { self.pendingAction = .delete }.disabled(selectedForSchedule.isEmpty)
+                        Menu {
+                            Button("Paid") { self.pendingAction = .paid }
+                            Button("Pending") { self.pendingAction = .pending }
+                            Button("Delete", role: .destructive) { self.pendingAction = .delete }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .disabled(selectedForSchedule.isEmpty)
                         Button("Done") { isSelectionMode = false; selectedForSchedule.removeAll() }
                     } else {
                         Button("Select All") {
                             isSelectionMode = true
                             selectedForSchedule = Set(splitRequests.map { $0.id })
                         }
-                        Button {
-                            showingScheduleSheet = true
-                        } label: {
-                            Label("Schedule", systemImage: "calendar.badge.clock")
-                        }
+                        Button { showingScheduleSheet = true } label: { Label("Schedule", systemImage: "calendar.badge.clock") }
                     }
                 }
             }
@@ -190,6 +187,15 @@ struct GroupsView: View {
                 }
             } message: {
                 Text("This will affect \(selectedForSchedule.count) items.")
+            }
+            .alert("Delete group?", isPresented: Binding(get: { groupPendingDelete != nil }, set: { if !$0 { groupPendingDelete = nil } })) {
+                Button("Delete", role: .destructive) {
+                    if let g = groupPendingDelete { deleteGroup(named: g) }
+                    groupPendingDelete = nil
+                }
+                Button("Cancel", role: .cancel) { groupPendingDelete = nil }
+            } message: {
+                if let g = groupPendingDelete { Text("This will delete all requests under \"\(g)\".") }
             }
         }
     }
@@ -249,6 +255,8 @@ struct GroupsView: View {
         try? modelContext.save()
         NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
+
+    @State private var groupPendingDelete: String? = nil
 }
 
 struct GroupRequestRow: View {

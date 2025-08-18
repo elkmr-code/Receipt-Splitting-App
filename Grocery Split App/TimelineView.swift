@@ -23,7 +23,7 @@ struct TimelineView: View {
                     // Spending Summary
                     SpendingSummaryView(viewModel: viewModel)
                     
-                    // Category Chart
+                    // Category Pie Chart
                     CategoryChartView(viewModel: viewModel)
                     
                     // Budget Progress
@@ -31,6 +31,9 @@ struct TimelineView: View {
                     
                     // Calendar View
                     ExpenseCalendarView(viewModel: viewModel)
+                    
+                    // Owed summary section (requested below budget and calendar)
+                    OwedSummaryView(viewModel: viewModel)
                     
                     // Recent Expenses
                     RecentExpensesView(
@@ -236,61 +239,33 @@ struct CategoryChartView: View {
                 .font(.headline)
             
             if viewModel.categoryBreakdown.isEmpty {
-                // Empty State
                 VStack(spacing: 12) {
-                    Image(systemName: "chart.pie")
-                        .font(.system(size: 48))
-                        .foregroundColor(.gray)
-                    Text("No expenses yet")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    Image(systemName: "chart.pie").font(.system(size: 48)).foregroundColor(.gray)
+                    Text("No expenses yet").font(.subheadline).foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 200)
+                .frame(height: 220)
             } else {
-                // Bar Chart with left-inner owed segment and right remainder
-                Chart(viewModel.categoryBreakdown) { category in
-                    let owed = min(max(category.owedAmount, 0), category.amount)
-                    let remainder = max(category.amount - owed, 0)
-                    // Left segment (owed)
-                    BarMark(
-                        xStart: .value("Start", 0),
-                        xEnd: .value("Owed", owed),
-                        y: .value("Category", category.category)
-                    )
-                    .foregroundStyle(Color.blue)
-                    .annotation(position: .overlay, alignment: .leading) {
-                        if owed > 0 {
-                            Text("$\(owed, specifier: "%.0f")")
-                                .font(.caption2)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 4)
-                                .background(Color.blue.opacity(0.85))
-                                .cornerRadius(4)
+                Chart(viewModel.categoryBreakdown) { c in
+                    let total = max(1.0, viewModel.categoryBreakdown.reduce(0) { $0 + $1.amount })
+                    SectorMark(angle: .value("Amount", c.amount), innerRadius: .ratio(0.55))
+                        .foregroundStyle(c.color)
+                        .annotation(position: .overlay) {
+                            if c.amount / total > 0.08 {
+                                Text("\(Int(round((c.amount/total)*100)))%")
+                                    .font(.caption2)
+                                    .foregroundColor(.white)
+                            }
                         }
-                    }
-                    // Right segment (paid or not owed yet)
-                    BarMark(
-                        xStart: .value("Start", owed),
-                        xEnd: .value("Total", owed + remainder),
-                        y: .value("Category", category.category)
-                    )
-                    .foregroundStyle(category.color.opacity(0.35))
-                    .annotation(position: .trailing) {
-                        Text("$\(category.amount, specifier: "%.0f")")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
                 }
-                .chartYAxis { AxisMarks(position: .leading) }
-                .chartXAxis { AxisMarks(position: .bottom) }
-                .chartPlotStyle { plot in
-                    plot.frame(minHeight: 80)
-                }
-                .frame(height: max(160, CGFloat(viewModel.categoryBreakdown.count) * 62))
-                .chartXAxis {
-                    AxisMarks(position: .bottom) { _ in
-                        AxisValueLabel().font(.caption)
+                .frame(height: 220)
+                
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], spacing: 8) {
+                    ForEach(viewModel.categoryBreakdown) { c in
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 3).fill(c.color).frame(width: 12, height: 12)
+                            Text(c.category).font(.caption)
+                        }
                     }
                 }
             }
@@ -299,6 +274,34 @@ struct CategoryChartView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.05), radius: 10)
+    }
+}
+
+// MARK: - Owed Summary View
+struct OwedSummaryView: View {
+    @ObservedObject var viewModel: DashboardViewModel
+    @Environment(\.openURL) private var openURL
+    
+    var totalOwed: Double {
+        viewModel.categoryBreakdown.reduce(0) { $0 + $1.owedAmount }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("People owe you")
+                    .font(.headline)
+                Spacer()
+                Text("$\(totalOwed, specifier: "%.2f")")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.blue)
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.05), radius: 8)
     }
 }
 
