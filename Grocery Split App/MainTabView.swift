@@ -7,10 +7,10 @@ struct MainTabView: View {
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            // Groups Tab
+            // Split Person History Tab
             GroupsView()
                 .tabItem {
-                    Label("Groups", systemImage: "person.3.fill")
+                    Label("Split History", systemImage: "person.3.fill")
                 }
                 .tag(0)
             
@@ -103,45 +103,56 @@ struct GroupsView: View {
                         }
                     }
                     
-                    // Group by expense title
-                    ForEach(groupedRequests(), id: \.key) { group, requests in
-                        Section {
-                            ForEach(requests) { request in
-                                HStack(spacing: 12) {
-                                    if isSelectionMode {
-                                        Button(action: { toggleSelection(for: request) }) {
-                                            Image(systemName: selectedForSchedule.contains(request.id) ? "checkmark.circle.fill" : "circle")
-                                                .font(.title3)
-                                                .foregroundColor(selectedForSchedule.contains(request.id) ? .blue : .gray)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .frame(width: 30, height: 30)
-                                    }
-                                    GroupRequestRow(request: request)
-                                }
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if isSelectionMode { toggleSelection(for: request) }
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button("Paid") { updateStatus(request, to: .paid) }.tint(.green)
-                                }
-                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                    Button("Pending") { updateStatus(request, to: .pending) }.tint(.orange)
-                                }
+                    // Two-section layout: Settled and Unsettled orders
+                    let settled = settledOrders()
+                    let unsettled = unsettledOrders()
+                    
+                    // Unsettled section (top)
+                    Section("Unsettled") {
+                        if unsettled.isEmpty {
+                            Text("No unsettled orders")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.vertical, 8)
+                        } else {
+                            ForEach(unsettled, id: \.key) { group, requests in
+                                ExpandableOrderRow(
+                                    orderName: group,
+                                    requests: requests,
+                                    isSelectionMode: isSelectionMode,
+                                    selectedForSchedule: $selectedForSchedule,
+                                    onToggleSelection: toggleSelection,
+                                    onUpdateStatus: updateStatus,
+                                    onDeleteGroup: { groupPendingDelete = group }
+                                )
                             }
-                        } header: {
-                            HStack {
-                                Text(group)
-                                Spacer()
-                                Button(role: .destructive) { groupPendingDelete = group } label: { Image(systemName: "trash") }
-                                    .buttonStyle(.plain)
+                        }
+                    }
+                    
+                    // Settled section (bottom)
+                    Section("Settled") {
+                        if settled.isEmpty {
+                            Text("No settled orders")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.vertical, 8)
+                        } else {
+                            ForEach(settled, id: \.key) { group, requests in
+                                ExpandableOrderRow(
+                                    orderName: group,
+                                    requests: requests,
+                                    isSelectionMode: isSelectionMode,
+                                    selectedForSchedule: $selectedForSchedule,
+                                    onToggleSelection: toggleSelection,
+                                    onUpdateStatus: updateStatus,
+                                    onDeleteGroup: { groupPendingDelete = group }
+                                )
                             }
                         }
                     }
                 }
             }
-            .navigationTitle("Groups")
+            .navigationTitle("Split Person History")
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if isSelectionMode {
@@ -207,6 +218,33 @@ struct GroupsView: View {
         return grouped.sorted { $0.key < $1.key }
     }
     
+    // MARK: - Settled/Unsettled categorization
+    private func settledOrders() -> [(key: String, value: [SplitRequest])] {
+        let grouped = Dictionary(grouping: splitRequests) { request in
+            request.expense?.name ?? "Unknown Expense"
+        }
+        
+        // Filter for orders where ALL participants are paid
+        let settled = grouped.filter { (expenseName, requests) in
+            return !requests.isEmpty && requests.allSatisfy { $0.status == .paid }
+        }
+        
+        return settled.sorted { $0.key < $1.key }
+    }
+    
+    private func unsettledOrders() -> [(key: String, value: [SplitRequest])] {
+        let grouped = Dictionary(grouping: splitRequests) { request in
+            request.expense?.name ?? "Unknown Expense"
+        }
+        
+        // Filter for orders where ANY participant is unpaid
+        let unsettled = grouped.filter { (expenseName, requests) in
+            return !requests.isEmpty && requests.contains { $0.status != .paid }
+        }
+        
+        return unsettled.sorted { $0.key < $1.key }
+    }
+    
     private func updateStatus(_ request: SplitRequest, to status: RequestStatus) {
         request.status = status
         try? modelContext.save()
@@ -269,11 +307,13 @@ struct GroupRequestRow: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                 
+                // Show only status (Paid/Pending) - no message text
                 HStack(spacing: 4) {
                     Image(systemName: request.status.icon)
                         .font(.caption2)
-                    Text(request.status.rawValue)
+                    Text(request.status == .paid ? "Paid" : "Pending")
                         .font(.caption)
+                        .fontWeight(.medium)
                 }
                 .foregroundColor(request.status == .paid ? .green : .orange)
             }
@@ -285,6 +325,86 @@ struct GroupRequestRow: View {
                 .fontWeight(.semibold)
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Expandable Order Row
+struct ExpandableOrderRow: View {
+    let orderName: String
+    let requests: [SplitRequest]
+    let isSelectionMode: Bool
+    @Binding var selectedForSchedule: Set<UUID>
+    let onToggleSelection: (SplitRequest) -> Void
+    let onUpdateStatus: (SplitRequest, RequestStatus) -> Void
+    let onDeleteGroup: () -> Void
+    
+    @State private var isExpanded = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header row (always visible)
+            Button(action: { withAnimation(.easeInOut) { isExpanded.toggle() } }) {
+                HStack {
+                    Text(orderName)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    // Order summary
+                    let totalAmount = requests.reduce(0) { $0 + $1.amount }
+                    Text("$\(totalAmount, specifier: "%.2f")")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Button(role: .destructive, action: onDeleteGroup) {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+            
+            // Expandable content
+            if isExpanded {
+                VStack(spacing: 8) {
+                    ForEach(requests) { request in
+                        HStack(spacing: 12) {
+                            if isSelectionMode {
+                                Button(action: { onToggleSelection(request) }) {
+                                    Image(systemName: selectedForSchedule.contains(request.id) ? "checkmark.circle.fill" : "circle")
+                                        .font(.title3)
+                                        .foregroundColor(selectedForSchedule.contains(request.id) ? .blue : .gray)
+                                }
+                                .buttonStyle(.plain)
+                                .frame(width: 30, height: 30)
+                            }
+                            GroupRequestRow(request: request)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if isSelectionMode { onToggleSelection(request) }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button("Paid") { onUpdateStatus(request, .paid) }.tint(.green)
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            Button("Pending") { onUpdateStatus(request, .pending) }.tint(.orange)
+                        }
+                    }
+                }
+                .padding(.leading, 16)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 }
 
@@ -430,5 +550,5 @@ struct SettingsView: View {
 
 #Preview {
     MainTabView()
-        .modelContainer(for: [Expense.self, ExpenseItem.self, SplitRequest.self])
+        .modelContainer(for: [Expense.self, ExpenseItem.self, SplitRequest.self, SplitParticipantData.self])
 }

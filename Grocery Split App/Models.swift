@@ -136,6 +136,37 @@ class SplitRequest {
     }
 }
 
+// MARK: - Split Participant Data Model (for persistence)
+@Model
+class SplitParticipantData {
+    var id: UUID
+    var name: String
+    var amount: Double
+    var percentage: Double
+    var weight: Double
+    var email: String
+    var paymentMethod: String
+    var expense: Expense?
+    
+    init(id: UUID = UUID(),
+         name: String,
+         amount: Double,
+         percentage: Double = 0.0,
+         weight: Double = 1.0,
+         email: String = "",
+         paymentMethod: String = "",
+         expense: Expense? = nil) {
+        self.id = id
+        self.name = name
+        self.amount = amount
+        self.percentage = percentage
+        self.weight = weight
+        self.email = email
+        self.paymentMethod = paymentMethod
+        self.expense = expense
+    }
+}
+
 // MARK: - Scheduled Split Request Model
 @Model
 class ScheduledSplitRequest {
@@ -237,10 +268,12 @@ class Expense {
     
     // Enhanced fields for split functionality
     var splitStatus: SplitStatus
+    var splitMethod: String? // Store the split method used (evenSplit, customSplit, percentageSplit)
     var message: String?
     var lastSentDate: Date?
     var currencyCode: String
     @Relationship(deleteRule: .cascade, inverse: \SplitRequest.expense) var splitRequests: [SplitRequest]
+    @Relationship(deleteRule: .cascade, inverse: \SplitParticipantData.expense) var splitParticipants: [SplitParticipantData]
     @Relationship(deleteRule: .cascade, inverse: \Receipt.expense) var receipt: Receipt?
     
     init(id: UUID = UUID(), 
@@ -251,6 +284,7 @@ class Expense {
          category: ExpenseCategory = .other, 
          notes: String = "",
          splitStatus: SplitStatus = .draft,
+         splitMethod: String? = nil,
          message: String? = nil,
          lastSentDate: Date? = nil,
          currencyCode: String = "USD") {
@@ -263,14 +297,26 @@ class Expense {
         self.notes = notes
         self.items = []
         self.splitStatus = splitStatus
+        self.splitMethod = splitMethod
         self.message = message
         self.lastSentDate = lastSentDate
         self.currencyCode = currencyCode
         self.splitRequests = []
+        self.splitParticipants = []
         self.receipt = nil
     }
     
     var totalCost: Double {
         return items.reduce(0) { $0 + $1.price }
+    }
+    
+    // Helper method to check if expense has been split
+    var hasBeenSplit: Bool {
+        return !splitParticipants.isEmpty || splitStatus != .draft
+    }
+    
+    // Helper method to check if expense is fully settled (all participants paid)
+    var isFullySettled: Bool {
+        return !splitRequests.isEmpty && splitRequests.allSatisfy { $0.status == .paid }
     }
 }

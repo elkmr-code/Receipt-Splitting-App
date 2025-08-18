@@ -122,7 +122,7 @@ struct ExpenseDetailView: View {
                                 HStack(spacing: 4) {
                                     Image(systemName: "person.3.fill")
                                         .font(.subheadline)
-                                    Text("Split Bill")
+                                    Text(expense.hasBeenSplit ? "Edit Split" : "Split Bill")
                                         .font(.subheadline)
                                         .fontWeight(.medium)
                                 }
@@ -132,8 +132,8 @@ struct ExpenseDetailView: View {
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                             }
-                            .accessibilityLabel("Split bill")
-                            .accessibilityHint("Create split requests for this expense")
+                            .accessibilityLabel(expense.hasBeenSplit ? "Edit split" : "Split bill")
+                            .accessibilityHint(expense.hasBeenSplit ? "Edit existing split for this expense" : "Create split requests for this expense")
                         }
                     }
                     

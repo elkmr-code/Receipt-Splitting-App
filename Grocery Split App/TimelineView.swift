@@ -29,11 +29,11 @@ struct TimelineView: View {
                     // Budget Progress
                     BudgetProgressView(viewModel: viewModel)
                     
+                    // People owe you section (moved above calendar as requested)
+                    OwedSummaryView(viewModel: viewModel)
+                    
                     // Calendar View
                     ExpenseCalendarView(viewModel: viewModel)
-                    
-                    // Owed summary section (requested below budget and calendar)
-                    OwedSummaryView(viewModel: viewModel)
                     
                     // Recent Expenses
                     RecentExpensesView(
@@ -86,7 +86,7 @@ struct TimelineView: View {
             viewModel.setModelContext(modelContext)
         }
         .sheet(item: $selectedExpense) { expense in
-            ExpenseDetailView(expense: expense)
+            EnhancedSplitExpenseView(expense: expense)
         }
         .sheet(isPresented: $showingAddExpense) {
             QuickAddExpenseView()
@@ -235,10 +235,10 @@ struct CategoryChartView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Spending by Category")
+            Text("Spending Overview")
                 .font(.headline)
             
-            if viewModel.categoryBreakdown.isEmpty {
+            if viewModel.splitSummary.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "chart.pie").font(.system(size: 48)).foregroundColor(.gray)
                     Text("No expenses yet").font(.subheadline).foregroundColor(.secondary)
@@ -246,14 +246,15 @@ struct CategoryChartView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 220)
             } else {
-                Chart(viewModel.categoryBreakdown) { c in
-                    let total = max(1.0, viewModel.categoryBreakdown.reduce(0) { $0 + $1.amount })
-                    SectorMark(angle: .value("Amount", c.amount), innerRadius: .ratio(0.55))
-                        .foregroundStyle(c.color)
+                Chart(viewModel.splitSummary) { split in
+                    let total = max(1.0, viewModel.splitSummary.reduce(0) { $0 + $1.amount })
+                    SectorMark(angle: .value("Amount", split.amount), innerRadius: .ratio(0.55))
+                        .foregroundStyle(split.color)
                         .annotation(position: .overlay) {
-                            if c.amount / total > 0.08 {
-                                Text("\(Int(round((c.amount/total)*100)))%")
+                            if split.amount / total > 0.08 {
+                                Text("\(Int(round((split.amount/total)*100)))%")
                                     .font(.caption2)
+                                    .fontWeight(.semibold)
                                     .foregroundColor(.white)
                             }
                         }
@@ -261,10 +262,13 @@ struct CategoryChartView: View {
                 .frame(height: 220)
                 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], spacing: 8) {
-                    ForEach(viewModel.categoryBreakdown) { c in
+                    ForEach(viewModel.splitSummary) { split in
                         HStack(spacing: 6) {
-                            RoundedRectangle(cornerRadius: 3).fill(c.color).frame(width: 12, height: 12)
-                            Text(c.category).font(.caption)
+                            RoundedRectangle(cornerRadius: 3).fill(split.color).frame(width: 12, height: 12)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(split.label).font(.caption).fontWeight(.medium)
+                                Text("$\(split.amount, specifier: "%.2f")").font(.caption2).foregroundColor(.secondary)
+                            }
                         }
                     }
                 }
@@ -442,10 +446,19 @@ struct RecentExpensesView: View {
                                 }.buttonStyle(.plain)
                             }
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(expense.name)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.primary)
+                                HStack {
+                                    Text(expense.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.primary)
+                                    
+                                    // Show split indicator
+                                    if expense.hasBeenSplit {
+                                        Image(systemName: expense.isFullySettled ? "checkmark.circle.fill" : "person.2.fill")
+                                            .font(.caption2)
+                                            .foregroundColor(expense.isFullySettled ? .green : .blue)
+                                    }
+                                }
                                 Text(expense.date.formatted(date: .abbreviated, time: .omitted))
                                     .font(.caption)
                                     .foregroundColor(.secondary)
