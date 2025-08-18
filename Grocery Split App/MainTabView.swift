@@ -105,7 +105,7 @@ struct GroupsView: View {
                     
                     // Group by expense title
                     ForEach(groupedRequests(), id: \.key) { group, requests in
-                        Section(group) {
+                        Section {
                             ForEach(requests) { request in
                                 HStack(spacing: 12) {
                                     if isSelectionMode {
@@ -121,9 +121,7 @@ struct GroupsView: View {
                                 }
                                 .contentShape(Rectangle())
                                 .onTapGesture {
-                                    if isSelectionMode {
-                                        toggleSelection(for: request)
-                                    }
+                                    if isSelectionMode { toggleSelection(for: request) }
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button("Paid") { updateStatus(request, to: .paid) }.tint(.green)
@@ -131,6 +129,13 @@ struct GroupsView: View {
                                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                     Button("Pending") { updateStatus(request, to: .pending) }.tint(.orange)
                                 }
+                            }
+                        } header: {
+                            HStack {
+                                Text(group)
+                                Spacer()
+                                Button(role: .destructive) { deleteGroup(named: group) } label: { Image(systemName: "trash") }
+                                    .buttonStyle(.plain)
                             }
                         }
                     }
@@ -140,14 +145,23 @@ struct GroupsView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if isSelectionMode {
-                        HStack {
-                            Button("Paid") { self.pendingAction = .paid }.disabled(selectedForSchedule.isEmpty)
-                            Button("Pending") { self.pendingAction = .pending }.disabled(selectedForSchedule.isEmpty)
-                            Button("Delete", role: .destructive) { self.pendingAction = .delete }.disabled(selectedForSchedule.isEmpty)
-                            Button("Done") { isSelectionMode = false; selectedForSchedule.removeAll() }
+                        let allSelected = selectedForSchedule.count == splitRequests.count && !splitRequests.isEmpty
+                        Button(allSelected ? "Deselect All" : "Select All") {
+                            if allSelected {
+                                selectedForSchedule.removeAll()
+                            } else {
+                                selectedForSchedule = Set(splitRequests.map { $0.id })
+                            }
                         }
+                        Button("Paid") { self.pendingAction = .paid }.disabled(selectedForSchedule.isEmpty)
+                        Button("Pending") { self.pendingAction = .pending }.disabled(selectedForSchedule.isEmpty)
+                        Button("Delete", role: .destructive) { self.pendingAction = .delete }.disabled(selectedForSchedule.isEmpty)
+                        Button("Done") { isSelectionMode = false; selectedForSchedule.removeAll() }
                     } else {
-                        Button("Select") { isSelectionMode = true }
+                        Button("Select All") {
+                            isSelectionMode = true
+                            selectedForSchedule = Set(splitRequests.map { $0.id })
+                        }
                         Button {
                             showingScheduleSheet = true
                         } label: {
@@ -225,6 +239,15 @@ struct GroupsView: View {
         isSelectionMode = false
         selectedForSchedule.removeAll()
         pendingAction = nil
+    }
+
+    private func deleteGroup(named group: String) {
+        // Delete all requests under this expense group
+        for r in splitRequests where (r.expense?.name ?? "Unknown Expense") == group {
+            modelContext.delete(r)
+        }
+        try? modelContext.save()
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
 }
 

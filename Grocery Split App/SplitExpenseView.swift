@@ -225,7 +225,10 @@ struct EnhancedSplitExpenseView: View {
                                 updateParticipant(updatedParticipant)
                             },
                             onDelete: {
-                                deleteParticipant(participant)
+                                // Prevent deleting the first, profile-linked participant
+                                if participant.id != participants.first?.id {
+                                    deleteParticipant(participant)
+                                }
                             }
                         )
                     }
@@ -610,7 +613,10 @@ struct EnhancedSplitExpenseView: View {
     
     private func setupDefaultParticipants() {
         if participants.isEmpty {
-            participants.append(SplitParticipant(name: expense.payerName, amount: 0, percentage: 0, weight: 1.0))
+            // Link first participant to profile name
+            let profileName = UserDefaults.standard.string(forKey: "userName")?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let defaultName = (profileName?.isEmpty == false ? profileName! : expense.payerName)
+            participants.append(SplitParticipant(name: defaultName, amount: 0, percentage: 0, weight: 1.0))
         }
     }
     
@@ -971,6 +977,7 @@ struct ParticipantRow: View {
             HStack {
                 TextField("Name", text: $participant.name)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .disabled(isFirstProfileLinked)
                     .onChange(of: participant.name) { _, newValue in
                         let trimmedName = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                         if !trimmedName.isEmpty {
@@ -990,6 +997,15 @@ struct ParticipantRow: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(10)
+    }
+
+    // The first row is considered profile-linked and not editable in name
+    private var isFirstProfileLinked: Bool {
+        // We can't access parent participants array here; infer by placeholder rule:
+        // if the name equals profile name or expense payer name, treat as locked
+        let profileName = UserDefaults.standard.string(forKey: "userName")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let lower = participant.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !profileName.isEmpty && lower == profileName.lowercased()
     }
     
     @ViewBuilder
