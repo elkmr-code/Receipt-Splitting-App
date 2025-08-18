@@ -88,7 +88,7 @@ struct CalendarGridView: View {
         VStack(spacing: 8) {
             // Weekday Headers
             HStack {
-                ForEach(weekdays, id: \.self) { day in
+                ForEach(Array(weekdays.enumerated()), id: \.offset) { _, day in
                     Text(day)
                         .font(.caption)
                         .fontWeight(.semibold)
@@ -99,7 +99,9 @@ struct CalendarGridView: View {
             
             // Calendar Days
             LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(getDaysInMonth(), id: \.self) { date in
+                let days = getDaysInMonth()
+                ForEach(days.indices, id: \.self) { index in
+                    let date = days[index]
                     if let date = date {
                         DayView(
                             date: date,

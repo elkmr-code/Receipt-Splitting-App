@@ -142,12 +142,17 @@ class DashboardViewModel: ObservableObject {
         var categoryTotals: [ExpenseCategory: Double] = [:]
         var categoryOwed: [ExpenseCategory: Double] = [:]
         
-        let currentUserName = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
+        let currentUserNameRaw = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
+        let currentUserName = currentUserNameRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         for expense in expenses {
             categoryTotals[expense.category, default: 0] += expense.totalCost
             // Sum outstanding split requests (exclude paid). Clamp to [0, expense.totalCost]
             let outstandingRaw = expense.splitRequests
-                .filter { $0.status != .paid && $0.participantName != currentUserName }
+                .filter { req in
+                    guard req.status != .paid else { return false }
+                    let participant = req.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    return participant != currentUserName
+                }
                 .reduce(0.0) { $0 + max(0, $1.amount) }
             let outstanding = min(max(outstandingRaw, 0), expense.totalCost)
             categoryOwed[expense.category, default: 0] += outstanding

@@ -41,6 +41,23 @@ struct GroupsView: View {
     @State private var showingScheduleSheet = false
     @State private var selectedForSchedule: Set<UUID> = []
     
+    // New state for robust selection
+    @State private var isSelectionMode = false
+    @State private var pendingAction: BulkAction?
+    
+    enum BulkAction: Identifiable {
+        case paid, pending, delete
+        var id: Self { self }
+        
+        var title: String {
+            switch self {
+            case .paid: "Mark as Paid"
+            case .pending: "Mark as Pending"
+            case .delete: "Delete"
+            }
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             List {
@@ -87,47 +104,27 @@ struct GroupsView: View {
                     }
                     
                     // Group by expense title
-                    // Bulk select toolbar - circles show only in selection mode
-                    if !splitRequests.isEmpty {
-                        Section {
-                            HStack {
-                                Button(action: enterOrToggleSelection) {
-                                    Text(isSelectionMode ? (isAllSelected ? "Deselect All" : "Select All") : "Select All")
-                                }
-                                Spacer()
-                                if isSelectionMode {
-                                    if !selectedForSchedule.isEmpty {
-                                        Button("Paid") { confirmBulk(.paid) }
-                                        Button("Pending") { confirmBulk(.pending) }
-                                        Button(role: .destructive) { confirmDelete() } label: { Text("Delete") }
-                                    }
-                                    Button("Done") { exitSelection() }
-                                }
-                            }
-                        }
-                    }
-
                     ForEach(groupedRequests(), id: \.key) { group, requests in
                         Section(group) {
                             ForEach(requests) { request in
                                 HStack(spacing: 12) {
                                     if isSelectionMode {
-                                        Button(action: { toggleRow(request) }) {
+                                        Button(action: { toggleSelection(for: request) }) {
                                             Image(systemName: selectedForSchedule.contains(request.id) ? "checkmark.circle.fill" : "circle")
                                                 .font(.title3)
                                                 .foregroundColor(selectedForSchedule.contains(request.id) ? .blue : .gray)
                                         }
                                         .buttonStyle(.plain)
                                         .frame(width: 30, height: 30)
-                                        .contentShape(Circle())
                                     }
-                                    
                                     GroupRequestRow(request: request)
-                                        .contentShape(Rectangle())
-                                        .allowsHitTesting(false) // completely disable row taps in selection mode
                                 }
                                 .contentShape(Rectangle())
-                                .allowsHitTesting(!isSelectionMode) // disable entire row interaction in selection mode
+                                .onTapGesture {
+                                    if isSelectionMode {
+                                        toggleSelection(for: request)
+                                    }
+                                }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button("Paid") { updateStatus(request, to: .paid) }.tint(.green)
                                 }
@@ -140,25 +137,22 @@ struct GroupsView: View {
                 }
             }
             .navigationTitle("Groups")
-            // Different confirmation dialogs for each action
-            .alert("Mark as Paid?", isPresented: Binding(get: { confirmAction == .paid }, set: { _ in confirmAction = nil })) {
-                Button("Mark Paid") { bulkUpdate(.paid); confirmAction = nil }
-                Button("Cancel", role: .cancel) { confirmAction = nil }
-            }
-            .alert("Mark as Pending?", isPresented: Binding(get: { confirmAction == .pending }, set: { _ in confirmAction = nil })) {
-                Button("Mark Pending") { bulkUpdate(.pending); confirmAction = nil }
-                Button("Cancel", role: .cancel) { confirmAction = nil }
-            }
-            .alert("Delete Selected?", isPresented: Binding(get: { confirmAction == .delete }, set: { _ in confirmAction = nil })) {
-                Button("Delete", role: .destructive) { bulkDelete(); confirmAction = nil }
-                Button("Cancel", role: .cancel) { confirmAction = nil }
-            }
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showingScheduleSheet = true
-                    } label: {
-                        Label("Schedule", systemImage: "calendar.badge.clock")
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    if isSelectionMode {
+                        HStack {
+                            Button("Paid") { self.pendingAction = .paid }.disabled(selectedForSchedule.isEmpty)
+                            Button("Pending") { self.pendingAction = .pending }.disabled(selectedForSchedule.isEmpty)
+                            Button("Delete", role: .destructive) { self.pendingAction = .delete }.disabled(selectedForSchedule.isEmpty)
+                            Button("Done") { isSelectionMode = false; selectedForSchedule.removeAll() }
+                        }
+                    } else {
+                        Button("Select") { isSelectionMode = true }
+                        Button {
+                            showingScheduleSheet = true
+                        } label: {
+                            Label("Schedule", systemImage: "calendar.badge.clock")
+                        }
                     }
                 }
             }
@@ -172,6 +166,16 @@ struct GroupsView: View {
                         showingScheduleSheet = false
                     }
                 )
+            }
+            .confirmationDialog("Are you sure?", isPresented: .constant(pendingAction != nil), titleVisibility: .visible) {
+                Button(pendingAction?.title ?? "Confirm", role: (pendingAction == .delete) ? .destructive : .none) {
+                    performBulkAction()
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingAction = nil
+                }
+            } message: {
+                Text("This will affect \(selectedForSchedule.count) items.")
             }
         }
     }
@@ -189,58 +193,38 @@ struct GroupsView: View {
         NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
 
-    // Selection helpers
-    @State private var isAllSelected = false
-    @State private var isSelectionMode = false
-    private func toggleRow(_ r: SplitRequest) {
-        if selectedForSchedule.contains(r.id) { selectedForSchedule.remove(r.id) } else { selectedForSchedule.insert(r.id) }
-        isAllSelected = selectedForSchedule.count == splitRequests.count
-    }
-    private func enterOrToggleSelection() {
-        if !isSelectionMode {
-            isSelectionMode = true
-            selectedForSchedule = Set(splitRequests.map { $0.id })
-            isAllSelected = true
-            return
+    // MARK: - Selection & Bulk Actions
+    
+    private func toggleSelection(for request: SplitRequest) {
+        if selectedForSchedule.contains(request.id) {
+            selectedForSchedule.remove(request.id)
+        } else {
+            selectedForSchedule.insert(request.id)
         }
-        // Already in selection mode -> toggle select all
-        if isAllSelected { selectedForSchedule.removeAll() } else { selectedForSchedule = Set(splitRequests.map { $0.id }) }
-        isAllSelected.toggle()
     }
-    private func exitSelection() {
+    
+    private func performBulkAction() {
+        guard let action = pendingAction else { return }
+        
+        for id in selectedForSchedule {
+            guard let request = splitRequests.first(where: { $0.id == id }) else { continue }
+            switch action {
+            case .paid:
+                request.status = .paid
+            case .pending:
+                request.status = .pending
+            case .delete:
+                modelContext.delete(request)
+            }
+        }
+        
+        try? modelContext.save()
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
+        
+        // Reset state
         isSelectionMode = false
-        isAllSelected = false
         selectedForSchedule.removeAll()
-    }
-    private func bulkUpdate(_ status: RequestStatus) {
-        for id in selectedForSchedule {
-            if let r = splitRequests.first(where: { $0.id == id }) { 
-                r.status = status 
-            }
-        }
-        try? modelContext.save()
-        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
-        exitSelection()
-    }
-
-    // MARK: - Confirmations
-    private enum ConfirmAction { case paid, pending, delete }
-    @State private var confirmAction: ConfirmAction? = nil
-    private func confirmBulk(_ status: RequestStatus) {
-        confirmAction = (status == .paid) ? .paid : .pending
-    }
-    private func confirmDelete() {
-        confirmAction = .delete
-    }
-    private func bulkDelete() {
-        for id in selectedForSchedule {
-            if let r = splitRequests.first(where: { $0.id == id }) { 
-                modelContext.delete(r) 
-            }
-        }
-        try? modelContext.save()
-        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
-        exitSelection()
+        pendingAction = nil
     }
 }
 

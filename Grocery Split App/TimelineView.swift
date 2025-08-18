@@ -282,11 +282,16 @@ struct CategoryChartView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                .frame(height: CGFloat(viewModel.categoryBreakdown.count * 50))
+                .chartYAxis { AxisMarks(position: .leading) }
+                .chartXAxis { AxisMarks(position: .bottom) }
+                .chartPlotStyle { plot in
+                    plot.frame(minHeight: 48)
+                }
+                .chartForegroundStyleScale(range: [.blue, .gray])
+                .frame(height: max(120, CGFloat(viewModel.categoryBreakdown.count) * 56))
                 .chartXAxis {
                     AxisMarks(position: .bottom) { _ in
-                        AxisValueLabel()
-                            .font(.caption)
+                        AxisValueLabel().font(.caption)
                     }
                 }
             }
