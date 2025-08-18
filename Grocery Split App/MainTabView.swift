@@ -550,5 +550,5 @@ struct SettingsView: View {
 
 #Preview {
     MainTabView()
-        .modelContainer(for: [Expense.self, ExpenseItem.self, SplitRequest.self])
+        .modelContainer(for: [Expense.self, ExpenseItem.self, SplitRequest.self, SplitParticipantData.self])
 }

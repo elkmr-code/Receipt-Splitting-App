@@ -7,6 +7,6 @@ struct ExpenseSplitApp: App {
         WindowGroup {
             MainTabView()
         }
-        .modelContainer(for: [Expense.self, ExpenseItem.self, Receipt.self, SplitRequest.self, ScheduledSplitRequest.self])
+        .modelContainer(for: [Expense.self, ExpenseItem.self, Receipt.self, SplitRequest.self, SplitParticipantData.self, ScheduledSplitRequest.self])
     }
 }

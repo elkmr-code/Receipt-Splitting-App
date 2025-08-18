@@ -309,4 +309,14 @@ class Expense {
     var totalCost: Double {
         return items.reduce(0) { $0 + $1.price }
     }
+    
+    // Helper method to check if expense has been split
+    var hasBeenSplit: Bool {
+        return !splitParticipants.isEmpty || splitStatus != .draft
+    }
+    
+    // Helper method to check if expense is fully settled (all participants paid)
+    var isFullySettled: Bool {
+        return !splitRequests.isEmpty && splitRequests.allSatisfy { $0.status == .paid }
+    }
 }

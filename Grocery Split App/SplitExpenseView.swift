@@ -648,6 +648,8 @@ struct EnhancedSplitExpenseView: View {
         // Don't add empty participants - ensure they have a valid name and amount
         participants.append(SplitParticipant(name: participantName, amount: 0, percentage: 0, weight: 1.0))
         recalculateSplit()
+        // Notify that expense data may have changed for real-time dashboard updates
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
     }
     
     private func updateParticipant(_ updatedParticipant: SplitParticipant) {
@@ -657,6 +659,8 @@ struct EnhancedSplitExpenseView: View {
             if splitMethod == .evenSplit {
                 recalculateSplit()
             }
+            // Notify that expense data may have changed for real-time dashboard updates
+            NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
         }
     }
     
@@ -664,6 +668,8 @@ struct EnhancedSplitExpenseView: View {
         participants.removeAll { $0.id == participant.id }
         selectedParticipants.remove(participant.id)
         recalculateSplit()
+        // Notify that expense data may have changed for real-time dashboard updates
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
     }
     
     private func persistSplitAsRequests() {
@@ -680,17 +686,21 @@ struct EnhancedSplitExpenseView: View {
         expense.splitStatus = .sent
         expense.lastSentDate = Date()
         
-        // Create new split requests excluding the current user
+        // Create new split requests for all participants
         let currentUser = (UserDefaults.standard.string(forKey: "userName") ?? expense.payerName)
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         for p in participants {
             let nameLower = p.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !p.name.isEmpty, nameLower != currentUser else { continue }
+            guard !p.name.isEmpty else { continue }
+            
+            // Current user (Me) always gets "Paid" status, others start as "Pending"
+            let status: RequestStatus = (nameLower == currentUser) ? .paid : .pending
+            
             let req = SplitRequest(
                 participantName: p.name,
                 amount: p.amount,
-                status: .pending,
+                status: status,
                 messageText: "",
                 priority: .normal,
                 expense: expense

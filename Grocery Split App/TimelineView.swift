@@ -446,10 +446,19 @@ struct RecentExpensesView: View {
                                 }.buttonStyle(.plain)
                             }
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(expense.name)
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.primary)
+                                HStack {
+                                    Text(expense.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.primary)
+                                    
+                                    // Show split indicator
+                                    if expense.hasBeenSplit {
+                                        Image(systemName: expense.isFullySettled ? "checkmark.circle.fill" : "person.2.fill")
+                                            .font(.caption2)
+                                            .foregroundColor(expense.isFullySettled ? .green : .blue)
+                                    }
+                                }
                                 Text(expense.date.formatted(date: .abbreviated, time: .omitted))
                                     .font(.caption)
                                     .foregroundColor(.secondary)

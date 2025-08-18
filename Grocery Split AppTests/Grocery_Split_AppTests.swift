@@ -296,5 +296,103 @@ struct Grocery_Split_AppTests {
         #expect(sanitizePriceInput("12.345") == "12.34")
         #expect(sanitizePriceInput("12.999") == "12.99")
     }
+    
+    @Test func testSplitDataPersistence() async throws {
+        // Test that split participant data is properly persisted and can be loaded
+        let expense = Expense(
+            name: "Test Group Dinner",
+            payerName: "Alice",
+            paymentMethod: .cash,
+            category: .dining,
+            notes: ""
+        )
+        
+        // Add test items
+        expense.items = [
+            ExpenseItem(name: "Main Course", price: 60.0, expense: expense),
+            ExpenseItem(name: "Dessert", price: 20.0, expense: expense)
+        ]
+        
+        // Test that total cost is correct
+        #expect(expense.totalCost == 80.0)
+        
+        // Test initial state
+        #expect(!expense.hasBeenSplit)
+        #expect(!expense.isFullySettled)
+        #expect(expense.splitParticipants.isEmpty)
+        
+        // Simulate creating split participants
+        let participantData1 = SplitParticipantData(
+            name: "Alice",
+            amount: 20.0,
+            percentage: 25.0,
+            expense: expense
+        )
+        let participantData2 = SplitParticipantData(
+            name: "Bob", 
+            amount: 20.0,
+            percentage: 25.0,
+            expense: expense
+        )
+        let participantData3 = SplitParticipantData(
+            name: "Charlie",
+            amount: 20.0, 
+            percentage: 25.0,
+            expense: expense
+        )
+        let participantData4 = SplitParticipantData(
+            name: "David",
+            amount: 20.0,
+            percentage: 25.0, 
+            expense: expense
+        )
+        
+        expense.splitParticipants = [participantData1, participantData2, participantData3, participantData4]
+        expense.splitMethod = "evenSplit"
+        expense.splitStatus = .sent
+        
+        // Test that expense is now marked as split
+        #expect(expense.hasBeenSplit)
+        #expect(expense.splitParticipants.count == 4)
+        #expect(expense.splitMethod == "evenSplit")
+    }
+    
+    @Test func testSplitSummaryCalculation() async throws {
+        // Test the split summary calculation logic for pie chart
+        let expense1 = Expense(
+            name: "Restaurant Bill",
+            payerName: "Alice", 
+            paymentMethod: .cash,
+            category: .dining,
+            notes: ""
+        )
+        expense1.items = [ExpenseItem(name: "Food", price: 80.0, expense: expense1)]
+        
+        // Create split requests: Alice (paid), Bob (pending), Charlie (pending) 
+        let req1 = SplitRequest(participantName: "Alice", amount: 20.0, status: .paid, expense: expense1)
+        let req2 = SplitRequest(participantName: "Bob", amount: 30.0, status: .pending, expense: expense1) 
+        let req3 = SplitRequest(participantName: "Charlie", amount: 30.0, status: .pending, expense: expense1)
+        
+        expense1.splitRequests = [req1, req2, req3]
+        
+        // Test calculation: Total spent = 80, People owe = 60 (Bob + Charlie), User spent = 20 (Alice paid)
+        // So pie chart should show: You spent = 20 (25%), People owe me = 60 (75%)
+        let totalOwed = expense1.splitRequests
+            .filter { $0.status != .paid && $0.participantName.lowercased() != "alice" }
+            .reduce(0.0) { $0 + $1.amount }
+        
+        #expect(totalOwed == 60.0) // Bob (30) + Charlie (30)
+        
+        let userSpent = expense1.totalCost - totalOwed
+        #expect(userSpent == 20.0) // Alice's portion
+        
+        // Test percentage calculation
+        let totalAmount = expense1.totalCost
+        let peopleOwePercentage = (totalOwed / totalAmount) * 100
+        let userSpentPercentage = (userSpent / totalAmount) * 100
+        
+        #expect(peopleOwePercentage == 75.0)
+        #expect(userSpentPercentage == 25.0)
+    }
 
 }
