@@ -86,7 +86,7 @@ struct TimelineView: View {
             viewModel.setModelContext(modelContext)
         }
         .sheet(item: $selectedExpense) { expense in
-            ExpenseDetailView(expense: expense)
+            EnhancedSplitExpenseView(expense: expense)
         }
         .sheet(isPresented: $showingAddExpense) {
             QuickAddExpenseView()

@@ -613,12 +613,34 @@ struct EnhancedSplitExpenseView: View {
     }
     
     private func setupDefaultParticipants() {
-        if participants.isEmpty {
-            // Link first participant to profile name
+        // Check if expense already has saved split participants
+        if !expense.splitParticipants.isEmpty {
+            // Load existing split data
+            participants = expense.splitParticipants.map { participantData in
+                SplitParticipant(
+                    name: participantData.name,
+                    amount: participantData.amount,
+                    percentage: participantData.percentage,
+                    weight: participantData.weight,
+                    email: participantData.email,
+                    paymentMethod: participantData.paymentMethod
+                )
+            }
+            
+            // Restore split method if saved
+            if let savedMethod = expense.splitMethod,
+               let method = SplitMethod.allCases.first(where: { $0.rawValue == savedMethod }) {
+                splitMethod = method
+            }
+        } else if participants.isEmpty {
+            // Create default participant if none exist
             let profileName = UserDefaults.standard.string(forKey: "userName")?.trimmingCharacters(in: .whitespacesAndNewlines)
             let defaultName = (profileName?.isEmpty == false ? profileName! : expense.payerName)
             participants.append(SplitParticipant(name: defaultName, amount: 0, percentage: 0, weight: 1.0))
         }
+        
+        // Recalculate to ensure consistency
+        recalculateSplit()
     }
     
     private func addParticipant() {
@@ -647,7 +669,18 @@ struct EnhancedSplitExpenseView: View {
     private func persistSplitAsRequests() {
         // Remove old split requests for this expense to keep in sync
         for r in expense.splitRequests { modelContext.delete(r) }
-        // Create new ones excluding the current user
+        
+        // Remove old split participants for this expense to keep in sync
+        for p in expense.splitParticipants { modelContext.delete(p) }
+        
+        // Save split method
+        expense.splitMethod = splitMethod.rawValue
+        
+        // Update split status to indicate this expense has been split
+        expense.splitStatus = .sent
+        expense.lastSentDate = Date()
+        
+        // Create new split requests excluding the current user
         let currentUser = (UserDefaults.standard.string(forKey: "userName") ?? expense.payerName)
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -664,6 +697,22 @@ struct EnhancedSplitExpenseView: View {
             )
             modelContext.insert(req)
         }
+        
+        // Save all split participants (including current user) for later editing
+        for p in participants {
+            guard !p.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            let participantData = SplitParticipantData(
+                name: p.name,
+                amount: p.amount,
+                percentage: p.percentage,
+                weight: p.weight,
+                email: p.email,
+                paymentMethod: p.paymentMethod,
+                expense: expense
+            )
+            modelContext.insert(participantData)
+        }
+        
         try? modelContext.save()
         NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
         NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
