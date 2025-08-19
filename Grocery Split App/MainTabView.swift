@@ -124,7 +124,7 @@ struct GroupsView: View {
                     pendingAction = nil
                 }
             } message: {
-                Text("This will affect \(selectedForSchedule.count) items.")
+                Text("This will affect \(countPendingItemsInSelection()) items.")
             }
             .alert("Delete group?", isPresented: Binding(get: { groupPendingDelete != nil }, set: { if !$0 { groupPendingDelete = nil } })) {
                 Button("Delete", role: .destructive) {
@@ -157,6 +157,18 @@ struct GroupsView: View {
             return !requests.isEmpty && requests.contains { $0.status != .paid }
         }
         return unsettled.sorted { $0.key < $1.key }
+    }
+    
+    private func countPendingItemsInSelection() -> Int {
+        // Only count selected items that are pending and from unsettled orders
+        let unsettledRequestIds = Set(unsettledOrders().flatMap { $0.value.map { $0.id } })
+        return selectedForSchedule.filter { selectedId in
+            guard unsettledRequestIds.contains(selectedId),
+                  let request = splitRequests.first(where: { $0.id == selectedId }) else { 
+                return false 
+            }
+            return request.status != .paid
+        }.count
     }
     
     private func updateStatus(_ request: SplitRequest, to status: RequestStatus) {
@@ -422,6 +434,10 @@ struct ExpandableOrderRow: View {
             }
         }
         .padding(.vertical, 4)
+        .onAppear {
+            // Reset expanded state when view appears to ensure collapsed state when navigating back
+            expanded = false
+        }
     }
 }
 

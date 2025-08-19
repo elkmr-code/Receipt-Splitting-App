@@ -582,8 +582,8 @@ struct EnhancedSplitExpenseView: View {
     }
     
     private func addParticipant() {
-        let participantName = "Person \(participants.count + 1)"
-        // Don't add empty participants - ensure they have a valid name and amount
+        let participantName = "New Person"
+        // Add participant with default name and recalculate to get proper amount
         participants.append(SplitParticipant(name: participantName, amount: 0, percentage: 0, weight: 1.0))
         recalculateSplit()
         // Notify that expense data may have changed for real-time dashboard updates
@@ -1030,7 +1030,7 @@ struct ParticipantRow: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack {
-                TextField("Name", text: $participant.name)
+                TextField("New Person", text: $participant.name)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .disabled(isFirstProfileLinked)
                     .onChange(of: participant.name) { _, newValue in
