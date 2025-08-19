@@ -377,7 +377,7 @@ struct ExpandableOrderRow: View {
     let onDeleteRequest: (SplitRequest) -> Void
     let onOpenExpense: (Expense?) -> Void
 
-    @State private var expanded: Bool = true
+    @State private var expanded: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {

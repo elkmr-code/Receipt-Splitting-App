@@ -26,6 +26,9 @@ struct TimelineView: View {
                     // Category Pie Chart
                     CategoryChartView(viewModel: viewModel)
                     
+                    // Split Summary Chart (People owe me vs My spending)
+                    SplitSummaryChartView(viewModel: viewModel)
+                    
                     // Budget Progress
                     BudgetProgressView(viewModel: viewModel)
                     
@@ -44,14 +47,9 @@ struct TimelineView: View {
                 }
                 .padding()
             }
+            .navigationTitle("Timeline")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Timeline")
-                        .font(.largeTitle).fontWeight(.bold)
-                        .onTapGesture(count: 5) { debugLoadDemoReceipt() }
-                }
-            }
+            .onTapGesture(count: 5) { debugLoadDemoReceipt() }
             .overlay(alignment: .bottomTrailing) {
                 VStack(spacing: 14) {
                     // Manual Add
@@ -235,16 +233,68 @@ struct CategoryChartView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Spending Overview")
+            Text("Spending by Category")
                 .font(.headline)
             
-            if viewModel.splitSummary.isEmpty {
+            if viewModel.categoryBreakdown.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "chart.pie").font(.system(size: 48)).foregroundColor(.gray)
                     Text("No expenses yet").font(.subheadline).foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 220)
+            } else {
+                Chart(viewModel.categoryBreakdown) { category in
+                    let total = max(1.0, viewModel.categoryBreakdown.reduce(0) { $0 + $1.amount })
+                    SectorMark(angle: .value("Amount", category.amount), innerRadius: .ratio(0.55))
+                        .foregroundStyle(category.color)
+                        .annotation(position: .overlay) {
+                            if category.amount / total > 0.08 {
+                                Text("\(Int(round((category.amount/total)*100)))%")
+                                    .font(.caption2)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                }
+                .frame(height: 220)
+                
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], spacing: 8) {
+                    ForEach(viewModel.categoryBreakdown) { category in
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 3).fill(category.color).frame(width: 12, height: 12)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(category.category).font(.caption).fontWeight(.medium)
+                                Text("$\(category.amount, specifier: "%.2f")").font(.caption2).foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.05), radius: 10)
+    }
+}
+
+// MARK: - Split Summary Chart View  
+struct SplitSummaryChartView: View {
+    @ObservedObject var viewModel: DashboardViewModel
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Money Flow")
+                .font(.headline)
+            
+            if viewModel.splitSummary.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "chart.pie").font(.system(size: 48)).foregroundColor(.gray)
+                    Text("No split expenses yet").font(.subheadline).foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 180)
             } else {
                 Chart(viewModel.splitSummary) { split in
                     let total = max(1.0, viewModel.splitSummary.reduce(0) { $0 + $1.amount })
@@ -259,7 +309,7 @@ struct CategoryChartView: View {
                             }
                         }
                 }
-                .frame(height: 220)
+                .frame(height: 180)
                 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], spacing: 8) {
                     ForEach(viewModel.splitSummary) { split in
@@ -451,6 +501,17 @@ struct RecentExpensesView: View {
                                         .font(.subheadline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.primary)
+                                    
+                                    // Pen icon for editing individual items
+                                    Button(action: {
+                                        // Navigate to item editing
+                                        onTap(expense)
+                                    }) {
+                                        Image(systemName: "pencil")
+                                            .font(.caption)
+                                            .foregroundColor(.blue)
+                                    }
+                                    .buttonStyle(.plain)
                                     
                                     // Show split indicator
                                     if expense.hasBeenSplit {

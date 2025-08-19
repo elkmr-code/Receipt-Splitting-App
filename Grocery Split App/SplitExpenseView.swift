@@ -594,9 +594,7 @@ struct EnhancedSplitExpenseView: View {
         if let index = participants.firstIndex(where: { $0.id == updatedParticipant.id }) {
             participants[index] = updatedParticipant
             // Recalculate when participant data changes to maintain consistency
-            if splitMethod == .evenSplit {
-                recalculateSplit()
-            }
+            recalculateSplit()
             // Notify that expense data may have changed for real-time dashboard updates
             NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
         }
