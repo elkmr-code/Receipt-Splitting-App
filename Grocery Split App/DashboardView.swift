@@ -111,7 +111,12 @@ struct DashboardView: View {
                         
                         Spacer()
                         
-                        Button("Schedule Send") { showingScheduleSheet = true }
+                        Button(action: { showingScheduleSheet = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "calendar")
+                                Text("Schedule Send")
+                            }
+                        }
                             .font(.caption)
                             .fontWeight(.medium)
                             .padding(.horizontal, 16)

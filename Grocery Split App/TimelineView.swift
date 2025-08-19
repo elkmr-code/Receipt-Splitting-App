@@ -48,7 +48,7 @@ struct TimelineView: View {
                 .padding()
             }
             .navigationTitle("Timeline")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .onTapGesture(count: 5) { debugLoadDemoReceipt() }
             .overlay(alignment: .bottomTrailing) {
                 VStack(spacing: 14) {
@@ -501,17 +501,6 @@ struct RecentExpensesView: View {
                                         .font(.subheadline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.primary)
-                                    
-                                    // Pen icon for editing individual items
-                                    Button(action: {
-                                        // Navigate to item editing
-                                        onTap(expense)
-                                    }) {
-                                        Image(systemName: "pencil")
-                                            .font(.caption)
-                                            .foregroundColor(.blue)
-                                    }
-                                    .buttonStyle(.plain)
                                     
                                     // Show split indicator
                                     if expense.hasBeenSplit {

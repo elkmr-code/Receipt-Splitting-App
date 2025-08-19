@@ -90,6 +90,19 @@ struct ExpenseDetailView: View {
                     
                     Divider()
                     
+                    // Edit Items Button
+                    HStack {
+                        Spacer()
+                        Button(action: { showingEditSheet = true }) {
+                            Image(systemName: "pencil")
+                                .font(.title3)
+                                .foregroundColor(.blue)
+                        }
+                        .accessibilityLabel("Edit expense items")
+                        .accessibilityHint("Edit individual item rows and amounts")
+                    }
+                    .padding(.bottom, 8)
+                    
                     HStack {
                         Text("Total Amount:")
                             .font(.title3)
