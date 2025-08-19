@@ -408,12 +408,15 @@ struct ExpandableOrderRow: View {
                             .onTapGesture { onOpenExpense(req.expense) }
                     }
                     .contentShape(Rectangle())
-                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button("Delete", role: .destructive) { onDeleteRequest(req) }
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button("Paid") { onUpdateStatus(req, .paid) }.tint(.green)
-                        Button("Pending") { onUpdateStatus(req, .pending) }.tint(.orange)
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        if req.status == .paid {
+                            Button("Pending") { onUpdateStatus(req, .pending) }.tint(.orange)
+                        } else {
+                            Button("Paid") { onUpdateStatus(req, .paid) }.tint(.green)
+                        }
                     }
                 }
             }
