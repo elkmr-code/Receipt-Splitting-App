@@ -21,6 +21,7 @@ struct EnhancedSplitExpenseView: View {
     @State private var finalShareMessage = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @State private var showingItemSelection = false
 
     
     enum SplitMethod: String, CaseIterable {
@@ -175,15 +176,48 @@ struct EnhancedSplitExpenseView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingItemSelection) {
+            if let receipt = expense.receipt {
+                ItemSelectionView(
+                    scanResult: ScanResult(
+                        type: receipt.sourceType == .ocr ? .ocr : .barcode,
+                        sourceId: receipt.receiptID ?? "unknown",
+                        originalText: receipt.rawText ?? "",
+                        image: receipt.imageData.flatMap { UIImage(data: $0) }
+                    ),
+                    selectedItems: .constant(Set<UUID>()),
+                    onConfirm: { newItems in
+                        updateExpenseItems(newItems)
+                        showingItemSelection = false
+                    },
+                    onBack: {
+                        showingItemSelection = false
+                    }
+                )
+            }
+        }
     }
     
     // MARK: - View Components
     
     private var expenseSummarySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Splitting: \(expense.name)")
-                .font(.title2)
-                .fontWeight(.bold)
+            HStack {
+                Text("Splitting: \(expense.name)")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Spacer()
+                
+                // Pen icon to edit original scanned items
+                Button(action: navigateToEditItems) {
+                    Image(systemName: "pencil")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                }
+                .accessibilityLabel("Edit items")
+                .accessibilityHint("Tap to edit the scanned items and their prices")
+            }
             
             HStack {
                 Text("Total Amount:")
@@ -670,6 +704,40 @@ struct EnhancedSplitExpenseView: View {
         recalculateSplit()
         // Notify that expense data may have changed for real-time dashboard updates
         NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+    }
+    
+    private func navigateToEditItems() {
+        showingItemSelection = true
+    }
+    
+    private func updateExpenseItems(_ newItems: [ParsedItem]) {
+        // Clear existing items
+        for item in expense.items {
+            modelContext.delete(item)
+        }
+        expense.items.removeAll()
+        
+        // Add new items
+        var newTotal: Double = 0
+        for parsedItem in newItems {
+            let item = ExpenseItem(name: parsedItem.name, price: parsedItem.totalPrice, expense: expense)
+            modelContext.insert(item)
+            expense.items.append(item)
+            newTotal += parsedItem.totalPrice
+        }
+        
+        // Update total cost
+        expense.totalCost = newTotal
+        
+        // Recalculate split
+        recalculateSplit()
+        
+        // Save changes
+        try? modelContext.save()
+        
+        // Notify that expense data has changed for real-time dashboard updates
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
     
     private func persistSplitAsRequests() {
