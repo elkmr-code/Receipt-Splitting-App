@@ -113,6 +113,10 @@ struct EnhancedSplitExpenseView: View {
         }
         .onAppear {
             setupDefaultParticipants()
+            // Initialize message template if not already set
+            if shareMessage.isEmpty {
+                shareMessage = selectedMessageTemplate.message
+            }
         }
         .alert("Alert", isPresented: $showingAlert) {
             Button("OK", role: .cancel) {}
