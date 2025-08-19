@@ -197,7 +197,7 @@ struct PreviewMessageSection: View {
     
     // MARK: - Computed Properties
     
-    private var messageTemplate: MessageTemplate {
+    private var messageTemplate: MessageTemplateData {
         return MessageComposer.getTemplate(for: expense, participant: participant)
     }
     

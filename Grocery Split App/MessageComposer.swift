@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 // MARK: - Message Templates
-struct MessageTemplate {
+struct MessageTemplateData {
     let name: String
     let template: String
     let placeholders: [String]
@@ -11,17 +11,17 @@ struct MessageTemplate {
 // MARK: - Message Composer Helper (Updated for Production SwiftData Models)
 struct MessageComposer {
     
-    static func getTemplate(for expense: Expense, participant: SplitRequest) -> MessageTemplate {
+    static func getTemplate(for expense: Expense, participant: SplitRequest) -> MessageTemplateData {
         if expense.items.isEmpty {
             // Simple expense without items
-            return MessageTemplate(
+            return MessageTemplateData(
                 name: "Simple Split",
                 template: "Hi {name}! You owe {amount} for {expense} from {date}. Payment request from {payer}. Thanks!",
                 placeholders: ["{name}", "{amount}", "{expense}", "{date}", "{payer}"]
             )
         } else {
             // Itemized expense
-            return MessageTemplate(
+            return MessageTemplateData(
                 name: "Itemized Split", 
                 template: "Hi {name}! Your share for {expense} is {amount}. Items: {items}. Payment requested by {payer} on {date}. Due: {dueDate}.",
                 placeholders: ["{name}", "{amount}", "{expense}", "{items}", "{payer}", "{date}", "{dueDate}"]
@@ -29,7 +29,7 @@ struct MessageComposer {
         }
     }
     
-    static func generateMessage(for expense: Expense, participant: SplitRequest, template: MessageTemplate) -> String {
+    static func generateMessage(for expense: Expense, participant: SplitRequest, template: MessageTemplateData) -> String {
         var message = template.template
         
         let dateFormatter = DateFormatter()

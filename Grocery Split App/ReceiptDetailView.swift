@@ -108,10 +108,20 @@ struct ExpenseDetailView: View {
                             .font(.title3)
                             .fontWeight(.semibold)
                         Spacer()
-                        Text(expense.totalCost, format: .currency(code: "USD"))
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.green)
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Button(action: { showingEditSheet = true }) {
+                                Image(systemName: "pencil")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                            }
+                            .accessibilityLabel("Edit expense")
+                            .accessibilityHint("Edit expense details and item amounts")
+                            
+                            Text(expense.totalCost, format: .currency(code: "USD"))
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.green)
+                        }
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Total amount: \(expense.totalCost, format: .currency(code: "USD"))")
