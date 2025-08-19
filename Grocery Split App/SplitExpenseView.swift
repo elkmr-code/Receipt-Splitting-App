@@ -95,6 +95,10 @@ struct EnhancedSplitExpenseView: View {
                     if !participants.isEmpty {
                         splitMethodSection
                         splitPreviewSection
+                        
+                        // Message Templates and Send Request
+                        messageTemplatesSection
+                        shareOptionsSection
                     }
                 }
                 .padding()
@@ -109,6 +113,10 @@ struct EnhancedSplitExpenseView: View {
         }
         .onAppear {
             setupDefaultParticipants()
+            // Initialize message template if not already set
+            if shareMessage.isEmpty {
+                shareMessage = selectedMessageTemplate.message
+            }
         }
         .alert("Alert", isPresented: $showingAlert) {
             Button("OK", role: .cancel) {}
@@ -388,14 +396,90 @@ struct EnhancedSplitExpenseView: View {
         }
     }
     
+    private var messageTemplatesSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Message Templates")
+                .font(.headline)
+            
+            // 4 Message Template Blocks in a 2x2 grid
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8)
+            ], spacing: 12) {
+                ForEach(MessageTemplate.allCases, id: \.self) { template in
+                    messageTemplateBlock(for: template)
+                }
+            }
+            
+            // Editable Message Text Area
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Edit Message:")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                TextEditor(text: $shareMessage)
+                    .frame(minHeight: 80, maxHeight: 120)
+                    .padding(8)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(.systemGray4), lineWidth: 1)
+                    )
+            }
+            
+            // Send Request Button
+            Button(action: sendPaymentRequests) {
+                HStack {
+                    Image(systemName: "paperplane.fill")
+                    Text("Send Request")
+                }
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.blue)
+                .cornerRadius(12)
+            }
+            .disabled(shareMessage.isEmpty)
+        }
+    }
+    
+    private func messageTemplateBlock(for template: MessageTemplate) -> some View {
+        Button(action: {
+            selectedMessageTemplate = template
+            shareMessage = template.message
+            finalShareMessage = ""
+        }) {
+            VStack(spacing: 8) {
+                Image(systemName: template.icon)
+                    .font(.title2)
+                    .foregroundColor(selectedMessageTemplate == template ? .white : .blue)
+                
+                Text(template.rawValue)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .multilineTextAlignment(.center)
+                    .foregroundColor(selectedMessageTemplate == template ? .white : .primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding()
+            .background(selectedMessageTemplate == template ? Color.blue : Color(.systemGray6))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(selectedMessageTemplate == template ? Color.blue : Color(.systemGray4), lineWidth: selectedMessageTemplate == template ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+    
     private var shareOptionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Share Split Details")
                 .font(.headline)
             
-            messageCustomizationView
             participantSelectionView
-            shareButtonsView
         }
     }
     

@@ -102,6 +102,15 @@ struct GroupsView: View {
             .navigationTitle("Split Person History")
             .navigationBarTitleDisplayMode(.large)
             .navigationBarBackButtonHidden(false)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showingScheduleSheet = true }) {
+                        Image(systemName: "calendar")
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                    }
+                }
+            }
             .sheet(isPresented: $showingScheduleSheet) {
                 ScheduleModalView(
                     selectedRequests: selectedForSchedule,

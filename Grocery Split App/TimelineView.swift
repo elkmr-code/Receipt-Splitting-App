@@ -15,41 +15,60 @@ struct TimelineView: View {
     @State private var selectedScanItems: Set<UUID> = []
     @State private var selectedExpense: Expense?
     @State private var showingAddExpense = false
+    @State private var scrollOffset: CGFloat = 0
+    
+    // Scroll-based title display mode
+    private var titleDisplayMode: NavigationBarItem.TitleDisplayMode {
+        scrollOffset > 50 ? .inline : .large
+    }
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Spending Summary
-                    SpendingSummaryView(viewModel: viewModel)
-                    
-                    // Category Pie Chart
-                    CategoryChartView(viewModel: viewModel)
-                    
-                    // Split Summary Chart (People owe me vs My spending)
-                    SplitSummaryChartView(viewModel: viewModel)
-                    
-                    // Budget Progress
-                    BudgetProgressView(viewModel: viewModel)
-                    
-                    // People owe you section (moved above calendar as requested)
-                    OwedSummaryView(viewModel: viewModel)
-                    
-                    // Calendar View
-                    ExpenseCalendarView(viewModel: viewModel)
-                    
-                    // Recent Expenses
-                    RecentExpensesView(
-                        expenses: viewModel.recentExpenses,
-                        onTap: { expense in selectedExpense = expense }
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Spending Summary
+                        SpendingSummaryView(viewModel: viewModel)
+                        
+                        // Category Pie Chart
+                        CategoryChartView(viewModel: viewModel)
+                        
+                        // Split Summary Chart (People owe me vs My spending)
+                        SplitSummaryChartView(viewModel: viewModel)
+                        
+                        // Budget Progress
+                        BudgetProgressView(viewModel: viewModel)
+                            // Add 5-tap gesture to budget progress area as requested, since title behavior changes with scroll
+                            .onTapGesture(count: 5) { debugLoadDemoReceipt() } // OCR demo activation - 5-tap feature location
+                        
+                        // People owe you section (moved above calendar as requested)
+                        OwedSummaryView(viewModel: viewModel)
+                        
+                        // Calendar View
+                        ExpenseCalendarView(viewModel: viewModel)
+                        
+                        // Recent Expenses
+                        RecentExpensesView(
+                            expenses: viewModel.recentExpenses,
+                            onTap: { expense in selectedExpense = expense }
+                        )
+                        .environmentObject(DashboardViewModelWrapper(viewModel: viewModel))
+                    }
+                    .padding()
+                    .background(
+                        GeometryReader { geometry in
+                            Color.clear
+                                .preference(key: ScrollOffsetPreferenceKey.self, value: geometry.frame(in: .named("scrollView")).minY)
+                        }
                     )
-                    .environmentObject(DashboardViewModelWrapper(viewModel: viewModel))
                 }
-                .padding()
+                .coordinateSpace(name: "scrollView")
+                .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                    scrollOffset = -value
+                }
             }
             .navigationTitle("Timeline")
-            .navigationBarTitleDisplayMode(.inline)
-            .onTapGesture(count: 5) { debugLoadDemoReceipt() }
+            .navigationBarTitleDisplayMode(titleDisplayMode)
             .overlay(alignment: .bottomTrailing) {
                 VStack(spacing: 14) {
                     // Manual Add
@@ -713,5 +732,13 @@ struct QuickAddExpenseView: View {
         try? modelContext.save()
         dismiss()
         NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+    }
+}
+
+// MARK: - Scroll Offset Preference Key
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
