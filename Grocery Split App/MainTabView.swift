@@ -40,11 +40,13 @@ struct GroupsView: View {
     @State private var isScheduleExpanded = false
     @State private var showingScheduleSheet = false
     @State private var selectedForSchedule: Set<UUID> = []
+    @State private var expenseToEdit: Expense? = nil
     
     // New state for robust selection
     @State private var isSelectionMode = false
     @State private var pendingAction: BulkAction?
-    
+    @State private var groupPendingDelete: String? = nil
+
     enum BulkAction: Identifiable {
         case paid, pending, delete
         var id: Self { self }
@@ -57,7 +59,7 @@ struct GroupsView: View {
             }
         }
     }
-    
+
     var body: some View {
         NavigationStack {
             List {
@@ -68,116 +70,38 @@ struct GroupsView: View {
                         description: Text("Scan a receipt and create split reminders")
                     )
                 } else {
-                    // Collapsible scheduled queue
-                    Section {
-                        Button {
-                            withAnimation(.easeInOut) { isScheduleExpanded.toggle() }
-                        } label: {
-                            HStack {
-                                Text("Scheduled Messages (\(scheduled.count))")
-                                    .font(.headline)
-                                Spacer()
-                                Image(systemName: isScheduleExpanded ? "chevron.up" : "chevron.down")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        if isScheduleExpanded {
-                            ForEach(scheduled) { req in
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(req.participants.joined(separator: ", "))
-                                            .font(.subheadline)
-                                        Text(req.scheduledDate, style: .date)
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    Text(req.scheduledDate, style: .time)
-                                        .font(.caption)
-                                    Button(role: .destructive) {
-                                        modelContext.delete(req); try? modelContext.save()
-                                    } label: { Image(systemName: "trash") }
-                                }
-                            }
-                        }
-                    }
+                    ScheduledSection(
+                        scheduled: scheduled,
+                        isScheduleExpanded: $isScheduleExpanded,
+                        modelContext: modelContext
+                    )
                     
-                    // Two-section layout: Settled and Unsettled orders
-                    let settled = settledOrders()
-                    let unsettled = unsettledOrders()
+                    UnsettledSection(
+                        requests: unsettledOrders(),
+                        isSelectionMode: isSelectionMode,
+                        selectedForSchedule: $selectedForSchedule,
+                        groupPendingDelete: $groupPendingDelete,
+                        expenseToEdit: $expenseToEdit,
+                        onToggleSelection: toggleSelection,
+                        onUpdateStatus: updateStatus,
+                        onDeleteRequest: deleteRequest
+                    )
                     
-                    // Unsettled section (top)
-                    Section("Unsettled") {
-                        if unsettled.isEmpty {
-                            Text("No unsettled orders")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.vertical, 8)
-                        } else {
-                            ForEach(unsettled, id: \.key) { group, requests in
-                                ExpandableOrderRow(
-                                    orderName: group,
-                                    requests: requests,
-                                    isSelectionMode: isSelectionMode,
-                                    selectedForSchedule: $selectedForSchedule,
-                                    onToggleSelection: toggleSelection,
-                                    onUpdateStatus: updateStatus,
-                                    onDeleteGroup: { groupPendingDelete = group }
-                                )
-                            }
-                        }
-                    }
-                    
-                    // Settled section (bottom)
-                    Section("Settled") {
-                        if settled.isEmpty {
-                            Text("No settled orders")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.vertical, 8)
-                        } else {
-                            ForEach(settled, id: \.key) { group, requests in
-                                ExpandableOrderRow(
-                                    orderName: group,
-                                    requests: requests,
-                                    isSelectionMode: isSelectionMode,
-                                    selectedForSchedule: $selectedForSchedule,
-                                    onToggleSelection: toggleSelection,
-                                    onUpdateStatus: updateStatus,
-                                    onDeleteGroup: { groupPendingDelete = group }
-                                )
-                            }
-                        }
-                    }
+                    SettledSection(
+                        requests: settledOrders(),
+                        isSelectionMode: isSelectionMode,
+                        selectedForSchedule: $selectedForSchedule,
+                        groupPendingDelete: $groupPendingDelete,
+                        expenseToEdit: $expenseToEdit,
+                        onToggleSelection: toggleSelection,
+                        onUpdateStatus: updateStatus,
+                        onDeleteRequest: deleteRequest
+                    )
                 }
             }
             .navigationTitle("Split Person History")
-            .toolbar {
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if isSelectionMode {
-                        let allSelected = selectedForSchedule.count == splitRequests.count && !splitRequests.isEmpty
-                        Button(allSelected ? "Deselect All" : "Select All") {
-                            if allSelected { selectedForSchedule.removeAll() } else { selectedForSchedule = Set(splitRequests.map { $0.id }) }
-                        }
-                        Menu {
-                            Button("Paid") { self.pendingAction = .paid }
-                            Button("Pending") { self.pendingAction = .pending }
-                            Button("Delete", role: .destructive) { self.pendingAction = .delete }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                        }
-                        .disabled(selectedForSchedule.isEmpty)
-                        Button("Done") { isSelectionMode = false; selectedForSchedule.removeAll() }
-                    } else {
-                        Button("Select All") {
-                            isSelectionMode = true
-                            selectedForSchedule = Set(splitRequests.map { $0.id })
-                        }
-                        Button { showingScheduleSheet = true } label: { Label("Schedule", systemImage: "calendar.badge.clock") }
-                    }
-                }
-            }
+            .navigationBarTitleDisplayMode(.large)
+            .navigationBarBackButtonHidden(false)
             .sheet(isPresented: $showingScheduleSheet) {
                 ScheduleModalView(
                     selectedRequests: selectedForSchedule,
@@ -188,6 +112,9 @@ struct GroupsView: View {
                         showingScheduleSheet = false
                     }
                 )
+            }
+            .sheet(item: $expenseToEdit) { exp in
+                EnhancedSplitExpenseView(expense: exp)
             }
             .confirmationDialog("Are you sure?", isPresented: .constant(pendingAction != nil), titleVisibility: .visible) {
                 Button(pendingAction?.title ?? "Confirm", role: (pendingAction == .delete) ? .destructive : .none) {
@@ -211,24 +138,14 @@ struct GroupsView: View {
         }
     }
     
-    private func groupedRequests() -> [(key: String, value: [SplitRequest])] {
-        let grouped = Dictionary(grouping: splitRequests) { request in
-            request.expense?.name ?? "Unknown Expense"
-        }
-        return grouped.sorted { $0.key < $1.key }
-    }
-    
-    // MARK: - Settled/Unsettled categorization
+    // MARK: - Helper Functions
     private func settledOrders() -> [(key: String, value: [SplitRequest])] {
         let grouped = Dictionary(grouping: splitRequests) { request in
             request.expense?.name ?? "Unknown Expense"
         }
-        
-        // Filter for orders where ALL participants are paid
         let settled = grouped.filter { (expenseName, requests) in
             return !requests.isEmpty && requests.allSatisfy { $0.status == .paid }
         }
-        
         return settled.sorted { $0.key < $1.key }
     }
     
@@ -236,12 +153,9 @@ struct GroupsView: View {
         let grouped = Dictionary(grouping: splitRequests) { request in
             request.expense?.name ?? "Unknown Expense"
         }
-        
-        // Filter for orders where ANY participant is unpaid
         let unsettled = grouped.filter { (expenseName, requests) in
             return !requests.isEmpty && requests.contains { $0.status != .paid }
         }
-        
         return unsettled.sorted { $0.key < $1.key }
     }
     
@@ -251,15 +165,7 @@ struct GroupsView: View {
         NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
 
-    // MARK: - Selection & Bulk Actions
-    
-    private func toggleSelection(for request: SplitRequest) {
-        if selectedForSchedule.contains(request.id) {
-            selectedForSchedule.remove(request.id)
-        } else {
-            selectedForSchedule.insert(request.id)
-        }
-    }
+
     
     private func performBulkAction() {
         guard let action = pendingAction else { return }
@@ -286,15 +192,147 @@ struct GroupsView: View {
     }
 
     private func deleteGroup(named group: String) {
-        // Delete all requests under this expense group
-        for r in splitRequests where (r.expense?.name ?? "Unknown Expense") == group {
-            modelContext.delete(r)
+        let targets = splitRequests.filter { ($0.expense?.name ?? "Unknown Expense") == group }
+        for r in targets { modelContext.delete(r) }
+        if let expense = targets.first?.expense {
+            for p in expense.splitParticipants { modelContext.delete(p) }
         }
         try? modelContext.save()
         NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
 
-    @State private var groupPendingDelete: String? = nil
+    private func toggleSelection(_ request: SplitRequest) {
+        if selectedForSchedule.contains(request.id) { selectedForSchedule.remove(request.id) } else { selectedForSchedule.insert(request.id) }
+    }
+
+    private func deleteRequest(_ request: SplitRequest) {
+        if let expense = request.expense {
+            for p in expense.splitParticipants where p.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == request.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+                modelContext.delete(p)
+            }
+        }
+        modelContext.delete(request)
+        try? modelContext.save()
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+    }
+}
+
+// MARK: - Scheduled Section
+struct ScheduledSection: View {
+    let scheduled: [ScheduledSplitRequest]
+    @Binding var isScheduleExpanded: Bool
+    let modelContext: ModelContext
+    
+    var body: some View {
+        Section {
+            Button {
+                withAnimation(.easeInOut) { isScheduleExpanded.toggle() }
+            } label: {
+                HStack {
+                    Text("Scheduled Messages (\(scheduled.count))")
+                        .font(.headline)
+                    Spacer()
+                    Image(systemName: isScheduleExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            if isScheduleExpanded {
+                ForEach(scheduled) { req in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(req.participants.joined(separator: ", "))
+                                .font(.subheadline)
+                            Text(req.scheduledDate, style: .date)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text(req.scheduledDate, style: .time)
+                            .font(.caption)
+                        Button(role: .destructive) {
+                            modelContext.delete(req); try? modelContext.save()
+                        } label: { Image(systemName: "trash") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Unsettled Section
+struct UnsettledSection: View {
+    let requests: [(key: String, value: [SplitRequest])]
+    let isSelectionMode: Bool
+    @Binding var selectedForSchedule: Set<UUID>
+    @Binding var groupPendingDelete: String?
+    @Binding var expenseToEdit: Expense?
+    let onToggleSelection: (SplitRequest) -> Void
+    let onUpdateStatus: (SplitRequest, RequestStatus) -> Void
+    let onDeleteRequest: (SplitRequest) -> Void
+    
+    var body: some View {
+        Section("Unsettled") {
+            if requests.isEmpty {
+                Text("No unsettled orders")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(requests, id: \.key) { group, requests in
+                    ExpandableOrderRow(
+                        orderName: group,
+                        requests: requests,
+                        isSelectionMode: isSelectionMode,
+                        selectedForSchedule: $selectedForSchedule,
+                        onToggleSelection: onToggleSelection,
+                        onUpdateStatus: onUpdateStatus,
+                        onDeleteGroup: { groupPendingDelete = group },
+                        onDeleteRequest: onDeleteRequest,
+                        onOpenExpense: { if let e = $0 { expenseToEdit = e } }
+                    )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Settled Section
+struct SettledSection: View {
+    let requests: [(key: String, value: [SplitRequest])]
+    let isSelectionMode: Bool
+    @Binding var selectedForSchedule: Set<UUID>
+    @Binding var groupPendingDelete: String?
+    @Binding var expenseToEdit: Expense?
+    let onToggleSelection: (SplitRequest) -> Void
+    let onUpdateStatus: (SplitRequest, RequestStatus) -> Void
+    let onDeleteRequest: (SplitRequest) -> Void
+    
+    var body: some View {
+        Section("Settled") {
+            if requests.isEmpty {
+                Text("No settled orders")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(requests, id: \.key) { group, requests in
+                    ExpandableOrderRow(
+                        orderName: group,
+                        requests: requests,
+                        isSelectionMode: isSelectionMode,
+                        selectedForSchedule: $selectedForSchedule,
+                        onToggleSelection: onToggleSelection,
+                        onUpdateStatus: onUpdateStatus,
+                        onDeleteGroup: { groupPendingDelete = group },
+                        onDeleteRequest: onDeleteRequest,
+                        onOpenExpense: { if let e = $0 { expenseToEdit = e } }
+                    )
+                }
+            }
+        }
+    }
 }
 
 struct GroupRequestRow: View {
@@ -307,7 +345,6 @@ struct GroupRequestRow: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                 
-                // Show only status (Paid/Pending) - no message text
                 HStack(spacing: 4) {
                     Image(systemName: request.status.icon)
                         .font(.caption2)
@@ -337,74 +374,51 @@ struct ExpandableOrderRow: View {
     let onToggleSelection: (SplitRequest) -> Void
     let onUpdateStatus: (SplitRequest, RequestStatus) -> Void
     let onDeleteGroup: () -> Void
-    
-    @State private var isExpanded = false
-    
+    let onDeleteRequest: (SplitRequest) -> Void
+    let onOpenExpense: (Expense?) -> Void
+
+    @State private var expanded: Bool = true
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Header row (always visible)
-            Button(action: { withAnimation(.easeInOut) { isExpanded.toggle() } }) {
-                HStack {
-                    Text(orderName)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
-                    
-                    // Order summary
-                    let totalAmount = requests.reduce(0) { $0 + $1.amount }
-                    Text("$\(totalAmount, specifier: "%.2f")")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                    
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Button(role: .destructive, action: onDeleteGroup) {
-                        Image(systemName: "trash")
-                            .font(.caption)
-                    }
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(orderName)
+                    .font(.headline)
+                Spacer()
+                Text("$\(requests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
+                    .fontWeight(.semibold)
+                Button(action: { expanded.toggle() }) { Image(systemName: expanded ? "chevron.up" : "chevron.down") }
                     .buttonStyle(.plain)
-                }
-                .padding(.vertical, 8)
+                Button(role: .destructive, action: onDeleteGroup) { Image(systemName: "trash") }
+                    .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            
-            // Expandable content
-            if isExpanded {
-                VStack(spacing: 8) {
-                    ForEach(requests) { request in
-                        HStack(spacing: 12) {
-                            if isSelectionMode {
-                                Button(action: { onToggleSelection(request) }) {
-                                    Image(systemName: selectedForSchedule.contains(request.id) ? "checkmark.circle.fill" : "circle")
-                                        .font(.title3)
-                                        .foregroundColor(selectedForSchedule.contains(request.id) ? .blue : .gray)
-                                }
-                                .buttonStyle(.plain)
-                                .frame(width: 30, height: 30)
+            .padding(.vertical, 6)
+            .onTapGesture { onOpenExpense(requests.first?.expense) }
+
+            if expanded {
+                ForEach(requests) { req in
+                    HStack(spacing: 12) {
+                        if isSelectionMode {
+                            Button(action: { onToggleSelection(req) }) {
+                                Image(systemName: selectedForSchedule.contains(req.id) ? "checkmark.circle.fill" : "circle")
                             }
-                            GroupRequestRow(request: request)
+                            .buttonStyle(.plain)
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if isSelectionMode { onToggleSelection(request) }
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button("Paid") { onUpdateStatus(request, .paid) }.tint(.green)
-                        }
-                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                            Button("Pending") { onUpdateStatus(request, .pending) }.tint(.orange)
-                        }
+                        GroupRequestRow(request: req)
+                            .onTapGesture { onOpenExpense(req.expense) }
+                    }
+                    .contentShape(Rectangle())
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        Button("Delete", role: .destructive) { onDeleteRequest(req) }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("Paid") { onUpdateStatus(req, .paid) }.tint(.green)
+                        Button("Pending") { onUpdateStatus(req, .pending) }.tint(.orange)
                     }
                 }
-                .padding(.leading, 16)
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .padding(.vertical, 4)
     }
 }
 
@@ -417,7 +431,6 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             List {
-                // Profile Header
                 Section {
                     HStack {
                         Image(systemName: "person.crop.circle.fill")
@@ -441,14 +454,12 @@ struct ProfileView: View {
                     .padding(.vertical, 8)
                 }
                 
-                // Quick Stats
                 Section("Statistics") {
                     StatRow(label: "Total Expenses", value: "142")
                     StatRow(label: "This Month", value: "$1,234.56")
                     StatRow(label: "Active Splits", value: "5")
                 }
                 
-                // Settings
                 Section {
                     Button(action: { showingSettings = true }) {
                         Label("Settings", systemImage: "gearshape")
