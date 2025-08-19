@@ -8,17 +8,8 @@ struct EnhancedSplitExpenseView: View {
     
     @State private var participants: [SplitParticipant] = []
     @State private var splitMethod: SplitMethod = .evenSplit
-    @State private var showingShareSheet = false
-    @State private var shareContent = ""
     @State private var selectedParticipants: Set<UUID> = []
     @State private var customSplitAmounts: [UUID: Double] = [:]
-    @State private var shareMessage = "Hey! Here's your share from our recent expense. No rush, but would love to settle this when you get a chance! 😊"
-    @State private var selectedMessageTemplate: MessageTemplate = .friendly
-    @State private var showingMessageTemplates = false
-    @State private var showingPaymentMethodSelector = false
-    @State private var selectedPaymentMethodForSharing: PaymentMethod = .venmo
-    @State private var showingFinalMessagePreview = false
-    @State private var finalShareMessage = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var showingItemSelection = false
@@ -46,39 +37,6 @@ struct EnhancedSplitExpenseView: View {
         }
     }
     
-    enum MessageTemplate: String, CaseIterable {
-        case friendly = "Friendly"
-        case couples = "Sweet for Couples"
-        case rude = "Direct for Friends"
-        case professional = "Professional"
-        case casual = "Casual"
-        
-        var message: String {
-            switch self {
-            case .friendly:
-                return "Hey! Here's your share from our recent expense. No rush, but would love to settle this when you get a chance! 😊"
-            case .couples:
-                return "Little reminder babe, here's your share from our expense. Love you! 💕"
-            case .rude:
-                return "Send me money ASAP, come on... You owe me for this expense! 💸"
-            case .professional:
-                return "This is a payment request for your portion of our shared expense. Please process at your earliest convenience."
-            case .casual:
-                return "Hey, just splitting the bill! Here's what you owe. Thanks! 👍"
-            }
-        }
-        
-        var icon: String {
-            switch self {
-            case .friendly: return "heart"
-            case .couples: return "heart.fill"
-            case .rude: return "exclamationmark.triangle"
-            case .professional: return "briefcase"
-            case .casual: return "hand.thumbsup"
-            }
-        }
-    }
-    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -93,7 +51,6 @@ struct EnhancedSplitExpenseView: View {
                     if !participants.isEmpty {
                         splitMethodSection
                         splitPreviewSection
-                        shareOptionsSection
                     }
                 }
                 .padding()
@@ -118,63 +75,10 @@ struct EnhancedSplitExpenseView: View {
         .onAppear {
             setupDefaultParticipants()
         }
-        .sheet(isPresented: $showingShareSheet) {
-            ShareSheet(activityItems: [shareContent])
-        }
         .alert("Alert", isPresented: $showingAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
-        }
-
-        .sheet(isPresented: $showingPaymentMethodSelector) {
-            PaymentMethodSelectorView(
-                selectedMethod: $selectedPaymentMethodForSharing,
-                onConfirm: {
-                    // Generate fresh message with selected template and new payment method
-                    let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
-                    let peopleToUse = selectedPeople.isEmpty ? participants : selectedPeople
-                    
-                    // Always regenerate the full message with the current template and new payment method
-                    finalShareMessage = generatePaymentShareContentWithMethod(
-                        for: peopleToUse,
-                        paymentMethod: selectedPaymentMethodForSharing
-                    )
-                    
-                    showingPaymentMethodSelector = false
-                    showingFinalMessagePreview = true
-                },
-                onCancel: {
-                    showingPaymentMethodSelector = false
-                }
-            )
-        }
-        .sheet(isPresented: $showingFinalMessagePreview) {
-            NavigationStack {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Preview & Edit Message")
-                        .font(.headline)
-                    TextEditor(text: $finalShareMessage)
-                        .frame(minHeight: 220)
-                        .padding(8)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(8)
-                    Spacer()
-                }
-                .padding()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { showingFinalMessagePreview = false }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Confirm & Send") {
-                            shareMessage = finalShareMessage
-                            sendPaymentRequests()
-                            showingFinalMessagePreview = false
-                        }.fontWeight(.semibold)
-                    }
-                }
-            }
         }
         .sheet(isPresented: $showingItemSelection) {
             if let receipt = expense.receipt {
