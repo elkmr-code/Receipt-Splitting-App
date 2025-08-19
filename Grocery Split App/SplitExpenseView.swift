@@ -1,6 +1,42 @@
 import SwiftUI
 import SwiftData
 
+// MARK: - Message Template Enum for SplitExpenseView
+enum MessageTemplate: String, CaseIterable, Identifiable {
+    case formal = "Formal"
+    case casual = "Casual" 
+    case friendly = "Friendly"
+    case business = "Business"
+    
+    var id: String { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .formal: return "briefcase"
+        case .casual: return "heart"
+        case .friendly: return "hand.wave"
+        case .business: return "building.2"
+        }
+    }
+    
+    var message: String {
+        switch self {
+        case .formal:
+            return "Hello, you owe {amount} for {expense}. Please settle at your earliest convenience."
+        case .casual:
+            return "Hey! Your share for {expense} is {amount}. Thanks!"
+        case .friendly:
+            return "Hi! Just a friendly reminder - your part of {expense} comes to {amount} 😊"
+        case .business:
+            return "Dear participant, This is regarding {expense}. Your portion is {amount}. Payment due within 7 days."
+        }
+    }
+    
+    var template: String {
+        return message
+    }
+}
+
 struct EnhancedSplitExpenseView: View {
     @Bindable var expense: Expense
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +49,14 @@ struct EnhancedSplitExpenseView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var showingItemSelection = false
+    
+    // Missing @State variables for message functionality
+    @State private var selectedMessageTemplate: MessageTemplate = .formal
+    @State private var shareMessage: String = ""
+    @State private var finalShareMessage: String = ""
+    @State private var shareContent: String = ""
+    @State private var showingShareSheet: Bool = false
+    @State private var showingPaymentMethodSelector: Bool = false
 
     
     enum SplitMethod: String, CaseIterable {
@@ -99,6 +143,21 @@ struct EnhancedSplitExpenseView: View {
                     }
                 )
             }
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(activityItems: [shareContent])
+        }
+        .sheet(isPresented: $showingPaymentMethodSelector) {
+            PaymentMethodSelectorView(
+                selectedMethod: .constant(.venmo),
+                onConfirm: {
+                    showingPaymentMethodSelector = false
+                    shareWithSelectedPaymentMethod()
+                },
+                onCancel: {
+                    showingPaymentMethodSelector = false
+                }
+            )
         }
     }
     
@@ -628,8 +687,7 @@ struct EnhancedSplitExpenseView: View {
             newTotal += parsedItem.totalPrice
         }
         
-        // Update total cost
-        expense.totalCost = newTotal
+        // totalCost is computed automatically from items, no need to set it
         
         // Recalculate split
         recalculateSplit()
@@ -765,6 +823,19 @@ struct EnhancedSplitExpenseView: View {
         } else {
             selectedParticipants.insert(participant.id)
         }
+    }
+    
+    private func shareMessage() {
+        let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
+        
+        if selectedPeople.isEmpty {
+            alertMessage = "Please select at least one participant to share with."
+            showingAlert = true
+            return
+        }
+        
+        shareContent = generateGroupShareContent()
+        showingShareSheet = true
     }
     
     private func shareIndividually() {
