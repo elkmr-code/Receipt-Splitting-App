@@ -244,13 +244,13 @@ struct DayExpensesSheet: View {
             }
             .navigationTitle(dateFormatter.string(from: date))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
+            .toolbar(content: {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
                 }
-            }
+            })
         }
     }
 }

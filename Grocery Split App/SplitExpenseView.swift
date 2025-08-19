@@ -83,7 +83,7 @@ struct EnhancedSplitExpenseView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
+            SwiftUI.ScrollView(Axis.Set.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 20) {
                     // Expense Summary
                     expenseSummarySection
@@ -101,20 +101,11 @@ struct EnhancedSplitExpenseView: View {
             }
             .navigationTitle("Split Expense")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        persistSplitAsRequests()
-                        dismiss()
-                    }
+            .navigationBarItems(
+                leading: Button("Cancel") { dismiss() },
+                trailing: Button("Done") { persistSplitAsRequests(); dismiss() }
                     .disabled(participants.isEmpty)
-                }
-            }
+            )
         }
         .onAppear {
             setupDefaultParticipants()
@@ -130,6 +121,7 @@ struct EnhancedSplitExpenseView: View {
                     scanResult: ScanResult(
                         type: receipt.sourceType == .ocr ? .ocr : .barcode,
                         sourceId: receipt.receiptID ?? "unknown",
+                        items: [],
                         originalText: receipt.rawText ?? "",
                         image: receipt.imageData.flatMap { UIImage(data: $0) }
                     ),
@@ -825,19 +817,6 @@ struct EnhancedSplitExpenseView: View {
         }
     }
     
-    private func shareMessage() {
-        let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
-        
-        if selectedPeople.isEmpty {
-            alertMessage = "Please select at least one participant to share with."
-            showingAlert = true
-            return
-        }
-        
-        shareContent = generateGroupShareContent()
-        showingShareSheet = true
-    }
-    
     private func shareIndividually() {
         let selectedPeople = participants.filter { selectedParticipants.contains($0.id) }
         
@@ -1198,7 +1177,7 @@ struct ItemAssignmentView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
+            SwiftUI.ScrollView(Axis.Set.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Assign items to participants")
                         .font(.headline)
@@ -1253,19 +1232,10 @@ struct ItemAssignmentView: View {
             }
             .navigationTitle("Assign Items")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        onComplete()
-                        dismiss()
-                    }
-                }
-            }
+            .navigationBarItems(
+                leading: Button("Cancel") { dismiss() },
+                trailing: Button("Done") { onComplete(); dismiss() }
+            )
         }
     }
     
@@ -1367,19 +1337,11 @@ struct PaymentMethodSelectorView: View {
             }
             .navigationTitle("Payment Method")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        onCancel()
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Continue") {
-                        onConfirm()
-                    }
+            .navigationBarItems(
+                leading: Button("Cancel") { onCancel() },
+                trailing: Button("Continue") { onConfirm() }
                     .fontWeight(.semibold)
-                }
-            }
+            )
         }
     }
 }
