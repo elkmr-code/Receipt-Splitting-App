@@ -405,6 +405,7 @@ struct ExpandableOrderRow: View {
                     .buttonStyle(.plain)
             }
             .padding(.vertical, 6)
+            .contentShape(Rectangle())
             .onTapGesture { onOpenExpense(requests.first?.expense) }
 
             if expanded {
