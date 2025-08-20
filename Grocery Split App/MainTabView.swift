@@ -150,9 +150,12 @@ struct GroupsView: View {
     // MARK: - Helper Functions
     private func settledOrders() -> [(key: String, value: [SplitRequest])] {
         let grouped = Dictionary(grouping: splitRequests) { request in
-            request.expense?.name ?? "Unknown Expense"
+            let expenseName = request.expense?.name ?? "Unknown Expense"
+            let expenseId = request.expense?.id.uuidString ?? "unknown"
+            let timestamp = request.expense?.date ?? Date()
+            return "\(expenseName)|\(expenseId)|\(timestamp.timeIntervalSince1970)"
         }
-        let settled = grouped.filter { (expenseName, requests) in
+        let settled = grouped.filter { (expenseKey, requests) in
             return !requests.isEmpty && requests.allSatisfy { $0.status == .paid }
         }
         return settled.sorted { $0.key < $1.key }
@@ -160,9 +163,12 @@ struct GroupsView: View {
     
     private func unsettledOrders() -> [(key: String, value: [SplitRequest])] {
         let grouped = Dictionary(grouping: splitRequests) { request in
-            request.expense?.name ?? "Unknown Expense"
+            let expenseName = request.expense?.name ?? "Unknown Expense"
+            let expenseId = request.expense?.id.uuidString ?? "unknown"
+            let timestamp = request.expense?.date ?? Date()
+            return "\(expenseName)|\(expenseId)|\(timestamp.timeIntervalSince1970)"
         }
-        let unsettled = grouped.filter { (expenseName, requests) in
+        let unsettled = grouped.filter { (expenseKey, requests) in
             return !requests.isEmpty && requests.contains { $0.status != .paid }
         }
         return unsettled.sorted { $0.key < $1.key }
@@ -400,6 +406,21 @@ struct ExpandableOrderRow: View {
 
     @State private var expanded: Bool = false
 
+    // Extract display name and timestamp from composite key
+    private var displayName: String {
+        let components = orderName.split(separator: "|")
+        return String(components.first ?? Substring(orderName))
+    }
+    
+    private var expenseDate: Date? {
+        let components = orderName.split(separator: "|")
+        guard components.count >= 3,
+              let timestampString = Double(String(components[2])) else {
+            return requests.first?.expense?.date
+        }
+        return Date(timeIntervalSince1970: timestampString)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Title row - NO swipe actions
@@ -418,8 +439,15 @@ struct ExpandableOrderRow: View {
     
     private var expenseHeaderRow: some View {
         HStack {
-            Text(orderName)
-                .font(.headline)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .font(.headline)
+                if let date = expenseDate {
+                    Text(date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
             Spacer()
             Text("$\(requests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
                 .fontWeight(.semibold)
