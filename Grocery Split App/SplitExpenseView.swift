@@ -679,6 +679,9 @@ struct EnhancedSplitExpenseView: View {
                 )
             }
             
+            // Auto-select all loaded participants for sharing
+            selectedParticipants = Set(participants.map { $0.id })
+            
             // Restore split method if saved
             if let savedMethod = expense.splitMethod,
                let method = SplitMethod.allCases.first(where: { $0.rawValue == savedMethod }) {
@@ -689,6 +692,9 @@ struct EnhancedSplitExpenseView: View {
             let profileName = UserDefaults.standard.string(forKey: "userName")?.trimmingCharacters(in: .whitespacesAndNewlines)
             let defaultName = (profileName?.isEmpty == false ? profileName! : expense.payerName)
             participants.append(SplitParticipant(name: defaultName, amount: 0, percentage: 0, weight: 1.0))
+            
+            // Auto-select the default participant
+            selectedParticipants = Set(participants.map { $0.id })
         }
         
         // Recalculate to ensure consistency

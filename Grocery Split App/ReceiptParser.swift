@@ -79,7 +79,9 @@ class ReceiptParser {
         // Dash-separated: "Apple Juice - $3.99"
         #"^([A-Za-z][\w\s\-&',\.]+?)\s*-\s*(\$?\s?\d{1,3}(?:,\d{3})*(?:[\.,]\d{2})?)$"#,
         // Right-aligned price: "Apple Juice           3.99"
-        #"^([A-Za-z][\w\s\-&',\.]{3,}?)\s{3,}(\$?\s?\d{1,3}(?:,\d{3})*[\.,]\d{2})$"#
+        #"^([A-Za-z][\w\s\-&',\.]{3,}?)\s{3,}(\$?\s?\d{1,3}(?:,\d{3})*[\.,]\d{2})$"#,
+        // More flexible pattern: "Item Name 3.99" (single space, optional $)
+        #"^([A-Za-z][A-Za-z0-9\s\-&',\.]+?)\s+(\$?\s?\d+[\.,]\d{2})$"#
     ]
     
     // MARK: - Skip Patterns (enhanced)
