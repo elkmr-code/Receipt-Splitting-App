@@ -219,6 +219,7 @@ struct EnhancedSplitExpenseView: View {
                             participant: participant,
                             splitMethod: splitMethod,
                             totalAmount: expense.totalCost,
+                            isDefaultUser: participant.id == participants.first?.id,
                             onUpdate: { updatedParticipant in
                                 updateParticipant(updatedParticipant)
                             },
@@ -655,30 +656,8 @@ struct EnhancedSplitExpenseView: View {
     // MARK: - Helper Methods
     
     private func sendPaymentRequests() {
-        // Create split requests for selected participants
-        let selectedParticipantsList = selectedParticipants.compactMap { participantId in
-            participants.first { $0.id == participantId }
-        }
-        
-        for participant in selectedParticipantsList {
-            let splitRequest = SplitRequest(
-                participantName: participant.name,
-                amount: participant.amount,
-                status: .sent,
-                messageText: shareMessage,
-                priority: .normal,
-                expense: expense
-            )
-            
-            modelContext.insert(splitRequest)
-        }
-        
-        // Update expense status
-        expense.splitStatus = .sent
-        expense.lastSentDate = Date()
-        expense.message = shareMessage
-        
-        try? modelContext.save()
+        // Auto-save like pressing "Done" button - this will save all participants and mark default user as paid
+        persistSplitAsRequests()
         
         // Show success message
         alertMessage = "Payment requests sent successfully!"
@@ -1158,6 +1137,7 @@ struct ParticipantRow: View {
     @State var participant: SplitParticipant
     let splitMethod: EnhancedSplitExpenseView.SplitMethod
     let totalAmount: Double
+    let isDefaultUser: Bool
     let onUpdate: (SplitParticipant) -> Void
     let onDelete: () -> Void
     
@@ -1175,9 +1155,12 @@ struct ParticipantRow: View {
                         }
                     }
                 
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
+                // Only show trash icon for non-default users
+                if !isDefaultUser {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
                 }
             }
             

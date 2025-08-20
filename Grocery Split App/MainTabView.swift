@@ -401,53 +401,69 @@ struct ExpandableOrderRow: View {
     @State private var expanded: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(orderName)
-                    .font(.headline)
-                Spacer()
-                Text("$\(requests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
-                    .fontWeight(.semibold)
-                Button(action: { expanded.toggle() }) { Image(systemName: expanded ? "chevron.up" : "chevron.down") }
-                    .buttonStyle(.plain)
-                Button(role: .destructive, action: onDeleteGroup) { Image(systemName: "trash") }
-                    .buttonStyle(.plain)
-            }
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
-            .onTapGesture { onOpenExpense(requests.first?.expense) }
-
+        VStack(alignment: .leading, spacing: 0) {
+            // Title row - NO swipe actions
+            expenseHeaderRow
+                
+            // Individual participant rows with swipe actions
             if expanded {
-                ForEach(requests) { req in
-                    HStack(spacing: 12) {
-                        if isSelectionMode {
-                            Button(action: { onToggleSelection(req) }) {
-                                Image(systemName: selectedForSchedule.contains(req.id) ? "checkmark.circle.fill" : "circle")
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        GroupRequestRow(request: req)
-                            .onTapGesture { onOpenExpense(req.expense) }
-                    }
-                    .contentShape(Rectangle())
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button("Delete", role: .destructive) { onDeleteRequest(req) }
-                    }
-                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        if req.status == .paid {
-                            Button("Pending") { onUpdateStatus(req, .pending) }.tint(.orange)
-                        } else {
-                            Button("Paid") { onUpdateStatus(req, .paid) }.tint(.green)
-                        }
-                    }
-                }
+                participantRowsSection
             }
         }
-        .padding(.vertical, 4)
         .onAppear {
             // Reset expanded state when view appears to ensure collapsed state when navigating back
             expanded = false
         }
+    }
+    
+    private var expenseHeaderRow: some View {
+        HStack {
+            Text(orderName)
+                .font(.headline)
+            Spacer()
+            Text("$\(requests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
+                .fontWeight(.semibold)
+            Button(action: { expanded.toggle() }) { 
+                Image(systemName: expanded ? "chevron.up" : "chevron.down") 
+            }
+            .buttonStyle(.plain)
+            Button(role: .destructive, action: onDeleteGroup) { 
+                Image(systemName: "trash") 
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { onOpenExpense(requests.first?.expense) }
+    }
+    
+    private var participantRowsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(requests) { req in
+                HStack(spacing: 12) {
+                    if isSelectionMode {
+                        Button(action: { onToggleSelection(req) }) {
+                            Image(systemName: selectedForSchedule.contains(req.id) ? "checkmark.circle.fill" : "circle")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    GroupRequestRow(request: req)
+                        .onTapGesture { onOpenExpense(req.expense) }
+                }
+                .contentShape(Rectangle())
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button("Delete", role: .destructive) { onDeleteRequest(req) }
+                }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    if req.status == .paid {
+                        Button("Pending") { onUpdateStatus(req, .pending) }.tint(.orange)
+                    } else {
+                        Button("Paid") { onUpdateStatus(req, .paid) }.tint(.green)
+                    }
+                }
+            }
+        }
+        .padding(.leading, 16) // Indent participant rows to show they're part of the expense
     }
 }
 
