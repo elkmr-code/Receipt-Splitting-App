@@ -319,6 +319,13 @@ struct UnsettledSection: View {
                         onDeleteRequest: onDeleteRequest,
                         onOpenExpense: { if let e = $0 { expenseToEdit = e } }
                     )
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Delete", role: .destructive) { groupPendingDelete = group }
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button("Mark All Paid") { requests.forEach { onUpdateStatus($0, .paid) } }
+                            .tint(.green)
+                    }
                 }
             }
         }
@@ -356,6 +363,13 @@ struct SettledSection: View {
                         onDeleteRequest: onDeleteRequest,
                         onOpenExpense: { if let e = $0 { expenseToEdit = e } }
                     )
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Delete", role: .destructive) { groupPendingDelete = group }
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button("Mark All Pending") { requests.forEach { onUpdateStatus($0, .pending) } }
+                            .tint(.orange)
+                    }
                 }
             }
         }

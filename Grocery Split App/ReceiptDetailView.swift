@@ -8,186 +8,92 @@ struct ExpenseDetailView: View {
     @State private var showingSplitView = false
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Expense Header Card
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: expense.category.icon)
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                            .accessibilityHidden(true)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(expense.name)
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .accessibilityLabel("Expense name: \(expense.name)")
-                            Text(expense.category.rawValue)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .accessibilityLabel("Category: \(expense.category.rawValue)")
-                        }
-                        
-                        Spacer()
-                    }
+        VStack(alignment: .leading, spacing: 20) {
+            // Expense Header Card
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: expense.category.icon)
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                        .accessibilityHidden(true)
                     
-                    Divider()
-                    
-                    VStack(spacing: 8) {
-                        HStack {
-                            Text("Date:")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(expense.date, style: .date)
-                                .font(.subheadline)
-                        }
-                        
-                        HStack {
-                            Text("Paid by:")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(expense.payerName)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                        }
-                        
-                        HStack {
-                            Text("Payment Method:")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            HStack(spacing: 4) {
-                                Image(systemName: expense.paymentMethod.icon)
-                                    .font(.caption)
-                                Text(expense.paymentMethod.rawValue)
-                                    .font(.subheadline)
-                            }
-                        }
-                        
-                        if !expense.notes.isEmpty {
-                            HStack {
-                                Text("Notes:")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text(expense.notes)
-                                    .font(.subheadline)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
-                    }
-                    
-                    Divider()
-                    
-                    HStack {
-                        Text("Total Amount:")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                        Spacer()
-                        
-                        Text(expense.totalCost, format: .currency(code: "USD"))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(expense.name)
                             .font(.title2)
                             .fontWeight(.bold)
-                            .foregroundColor(.green)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("Total amount: \(expense.totalCost, format: .currency(code: "USD"))")
-                }
-                .padding()
-                .background(Color(.systemBackground))
-                .cornerRadius(15)
-                .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
-                
-                // Items Section
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Items (\(expense.items.count))")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                        
-                        Button(action: addNewItem) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.title3)
-                                .foregroundColor(.blue)
-                        }
-                        .accessibilityLabel("Add new item")
-                        .accessibilityHint("Add a new item to this expense")
-                        
-                        Spacer()
+                            .accessibilityLabel("Expense name: \(expense.name)")
+                        Text(expense.category.rawValue)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .accessibilityLabel("Category: \(expense.category.rawValue)")
                     }
                     
-                    if expense.items.isEmpty {
-                        VStack(spacing: 16) {
-                            Image(systemName: "list.bullet")
-                                .font(.system(size: 50))
-                                .foregroundColor(.gray.opacity(0.6))
-                            
-                            VStack(spacing: 8) {
-                                Text("No items added")
-                                    .font(.headline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.secondary)
-                                
-                                Text("This expense doesn't have itemized details yet. You can add items by editing the expense or importing from a receipt scan.")
-                                    .font(.body)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(nil)
-                            }
+                    Spacer()
+                }
+                
+                Divider()
+                
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Date:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(expense.date, style: .date)
+                            .font(.subheadline)
+                    }
+                    
+                    HStack {
+                        Text("Paid by:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(expense.payerName)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    
+                    HStack {
+                        Text("Payment Method:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Image(systemName: expense.paymentMethod.icon)
+                                .font(.caption)
+                            Text(expense.paymentMethod.rawValue)
+                                .font(.subheadline)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 50)
-                        .padding(.horizontal, 20)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .fill(Color(.systemGray6))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(Color(.systemGray4), lineWidth: 1)
-                                )
-                        )
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("No items added. This expense doesn't have itemized details yet.")
-                        .accessibilityHint("You can add items by editing the expense or importing from a receipt scan.")
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(expense.items.sorted(by: { $0.name < $1.name })) { item in
-                                EditableExpenseItemRow(
-                                    item: item,
-                                    onUpdate: { updatedItem in
-                                        if let index = expense.items.firstIndex(where: { $0.id == updatedItem.id }) {
-                                            expense.items[index] = updatedItem
-                                            // Trigger model context save for real-time updates
-                                            try? modelContext.save()
-                                            NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
-                                        }
-                                    },
-                                    onDelete: {
-                                        expense.items.removeAll { $0.id == item.id }
-                                        // Trigger model context save for real-time updates
-                                        try? modelContext.save()
-                                        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
-                                    }
-                                )
-                                .background(Color(.systemBackground))
-                                .cornerRadius(8)
-                                .shadow(color: .black.opacity(0.05), radius: 2)
-                                .padding(.vertical, 2)
-                                
-                                if item.id != expense.items.sorted(by: { $0.name < $1.name }).last?.id {
-                                    Divider()
-                                        .padding(.horizontal)
-                                }
-                            }
+                    }
+                    
+                    if !expense.notes.isEmpty {
+                        HStack {
+                            Text("Notes:")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(expense.notes)
+                                .font(.subheadline)
+                                .multilineTextAlignment(.trailing)
                         }
-                        .padding()
-                        .background(Color(.systemGray6).opacity(0.5))
-                        .cornerRadius(12)
                     }
                 }
+                
+                Divider()
+                
+                HStack {
+                    Text("Total Amount:")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    
+                    Text(expense.totalCost, format: .currency(code: "USD"))
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.green)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Total amount: \(expense.totalCost, format: .currency(code: "USD"))")
                 
                 // Edit Split Button - centered below the expense summary
                 if !expense.items.isEmpty {
@@ -215,7 +121,95 @@ struct ExpenseDetailView: View {
                 }
             }
             .padding()
+            .background(Color(.systemBackground))
+            .cornerRadius(15)
+            .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+            
+            // Items Section
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Items (\(expense.items.count))")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Button(action: addNewItem) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                    }
+                    .accessibilityLabel("Add new item")
+                    .accessibilityHint("Add a new item to this expense")
+                }
+                .padding(.horizontal, 20)
+                
+                if expense.items.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 50))
+                            .foregroundColor(.gray.opacity(0.6))
+                        
+                        VStack(spacing: 8) {
+                            Text("No items added")
+                                .font(.headline)
+                                .fontWeight(.medium)
+                                .foregroundColor(.secondary)
+                            
+                            Text("This expense doesn't have itemized details yet. You can add items by editing the expense or importing from a receipt scan.")
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(nil)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 50)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(.systemGray6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                            )
+                    )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("No items added. This expense doesn't have itemized details yet.")
+                    .accessibilityHint("You can add items by editing the expense or importing from a receipt scan.")
+                } else {
+                    List {
+                        ForEach(expense.items.sorted(by: { $0.name < $1.name })) { item in
+                            EditableExpenseItemRow(
+                                item: item,
+                                onUpdate: { updatedItem in
+                                    if let index = expense.items.firstIndex(where: { $0.id == updatedItem.id }) {
+                                        expense.items[index] = updatedItem
+                                        // Trigger model context save for real-time updates
+                                        try? modelContext.save()
+                                        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+                                    }
+                                },
+                                onDelete: {
+                                    expense.items.removeAll { $0.id == item.id }
+                                    // Trigger model context save for real-time updates
+                                    try? modelContext.save()
+                                    NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+                                }
+                            )
+                            .background(Color(.systemBackground))
+                            .cornerRadius(8)
+                            .shadow(color: .black.opacity(0.05), radius: 2)
+                            .padding(.vertical, 2)
+                            
+                            
+                        }
+                    }
+                    .listStyle(.plain)
+                    .padding()
+                    .background(Color.clear)
+                    .cornerRadius(12)
+                }
+            }
         }
+        .padding()
         .navigationTitle("Expense Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -607,12 +601,10 @@ struct EditableExpenseItemRow: View {
                     .accessibilityLabel("Price: \(item.price, format: .currency(code: "USD"))")
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
         .background(Color.clear)
         .contentShape(Rectangle())
-        // Swipe left to edit
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        // Swipe right to edit
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
                 startEditing()
                 let impactFeedback = UIImpactFeedbackGenerator(style: .light)
@@ -623,8 +615,8 @@ struct EditableExpenseItemRow: View {
             .tint(.blue)
             .accessibilityLabel("Edit item")
         }
-        // Swipe right to delete
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        // Swipe left to delete
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button {
                 showingDeleteConfirmation = true
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
