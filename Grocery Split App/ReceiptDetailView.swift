@@ -30,14 +30,6 @@ struct ExpenseDetailView: View {
                         }
                         
                         Spacer()
-                        
-                        Button(action: { showingEditSheet = true }) {
-                            Image(systemName: "pencil")
-                                .font(.title3)
-                                .foregroundColor(.blue)
-                        }
-                        .accessibilityLabel("Edit expense")
-                        .accessibilityHint("Edit expense details like name, category, and payment information")
                     }
                     
                     Divider()
@@ -90,38 +82,16 @@ struct ExpenseDetailView: View {
                     
                     Divider()
                     
-                    // Edit Items Button
-                    HStack {
-                        Spacer()
-                        Button(action: { showingEditSheet = true }) {
-                            Image(systemName: "pencil")
-                                .font(.title3)
-                                .foregroundColor(.blue)
-                        }
-                        .accessibilityLabel("Edit expense items")
-                        .accessibilityHint("Edit individual item rows and amounts")
-                    }
-                    .padding(.bottom, 8)
-                    
                     HStack {
                         Text("Total Amount:")
                             .font(.title3)
                             .fontWeight(.semibold)
                         Spacer()
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Button(action: { showingEditSheet = true }) {
-                                Image(systemName: "pencil")
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
-                            }
-                            .accessibilityLabel("Edit expense")
-                            .accessibilityHint("Edit expense details and item amounts")
-                            
-                            Text(expense.totalCost, format: .currency(code: "USD"))
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.green)
-                        }
+                        
+                        Text(expense.totalCost, format: .currency(code: "USD"))
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Total amount: \(expense.totalCost, format: .currency(code: "USD"))")
@@ -138,26 +108,15 @@ struct ExpenseDetailView: View {
                             .font(.title3)
                             .fontWeight(.semibold)
                         
-                        Spacer()
-                        
-                        if !expense.items.isEmpty {
-                            Button(action: { showingSplitView = true }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "person.3.fill")
-                                        .font(.subheadline)
-                                    Text(expense.hasBeenSplit ? "Edit Split" : "Split Bill")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(8)
-                            }
-                            .accessibilityLabel(expense.hasBeenSplit ? "Edit split" : "Split bill")
-                            .accessibilityHint(expense.hasBeenSplit ? "Edit existing split for this expense" : "Create split requests for this expense")
+                        Button(action: addNewItem) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(.blue)
                         }
+                        .accessibilityLabel("Add new item")
+                        .accessibilityHint("Add a new item to this expense")
+                        
+                        Spacer()
                     }
                     
                     if expense.items.isEmpty {
@@ -229,6 +188,31 @@ struct ExpenseDetailView: View {
                         .cornerRadius(12)
                     }
                 }
+                
+                // Edit Split Button - centered below the expense summary
+                if !expense.items.isEmpty {
+                    HStack {
+                        Spacer()
+                        Button(action: { showingSplitView = true }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "person.3.fill")
+                                    .font(.subheadline)
+                                Text(expense.hasBeenSplit ? "Edit Split" : "Split Bill")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                        .accessibilityLabel(expense.hasBeenSplit ? "Edit split" : "Split bill")
+                        .accessibilityHint(expense.hasBeenSplit ? "Edit existing split for this expense" : "Create split requests for this expense")
+                        Spacer()
+                    }
+                    .padding(.top, 16)
+                }
             }
             .padding()
         }
@@ -236,11 +220,19 @@ struct ExpenseDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: shareExpense) {
-                    Image(systemName: "square.and.arrow.up")
+                HStack {
+                    Button(action: { showingEditSheet = true }) {
+                        Image(systemName: "pencil")
+                    }
+                    .accessibilityLabel("Edit expense")
+                    .accessibilityHint("Edit expense details")
+                    
+                    Button(action: shareExpense) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share expense")
+                    .accessibilityHint("Share expense details with others")
                 }
-                .accessibilityLabel("Share expense")
-                .accessibilityHint("Share expense details with others")
             }
         }
         .sheet(isPresented: $showingEditSheet) {
@@ -275,6 +267,16 @@ struct ExpenseDetailView: View {
            let rootViewController = window.rootViewController {
             rootViewController.present(activityViewController, animated: true)
         }
+    }
+    
+    private func addNewItem() {
+        let newItem = ExpenseItem(name: "New Item", price: 0.0, expense: expense)
+        modelContext.insert(newItem)
+        expense.items.append(newItem)
+        
+        // Save changes
+        try? modelContext.save()
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
     }
 }
 
@@ -609,9 +611,17 @@ struct EditableExpenseItemRow: View {
         .padding(.horizontal, 16)
         .background(Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture {
-            // Single tap to edit for smoother UX
-            startEditing()
+        // Swipe left to edit
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                startEditing()
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.blue)
+            .accessibilityLabel("Edit item")
         }
         // Swipe right to delete
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
@@ -624,18 +634,6 @@ struct EditableExpenseItemRow: View {
             }
             .tint(.red)
             .accessibilityLabel("Delete item")
-        }
-        // Swipe left to edit
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                startEditing()
-                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                impactFeedback.impactOccurred()
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-            .tint(.blue)
-            .accessibilityLabel("Edit item")
         }
         .alert("Delete Item", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}

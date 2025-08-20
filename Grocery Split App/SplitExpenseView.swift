@@ -171,15 +171,6 @@ struct EnhancedSplitExpenseView: View {
                     .fontWeight(.bold)
                 
                 Spacer()
-                
-                // Pen icon to edit original scanned items
-                Button(action: navigateToEditItems) {
-                    Image(systemName: "pencil")
-                        .font(.title2)
-                        .foregroundColor(.blue)
-                }
-                .accessibilityLabel("Edit items")
-                .accessibilityHint("Tap to edit the scanned items and their prices")
             }
             
             HStack {
