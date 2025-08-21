@@ -185,18 +185,18 @@ struct ExpenseDetailView: View {
                         ForEach(expense.items.sorted(by: { $0.name < $1.name })) { item in
                             EditableExpenseItemRow(
                                 item: item,
-                                onUpdate: { updatedItem in
-                                    if let index = expense.items.firstIndex(where: { $0.id == updatedItem.id }) {
-                                        expense.items[index] = updatedItem
-                                        // Trigger model context save for real-time updates
-                                        try? modelContext.save()
-                                        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
-                                    }
+                                onUpdate: { _ in
+                                    // Persist and rebalance split amounts to the new total
+                                    try? modelContext.save()
+                                    reconcileSplitsEvenly()
+                                    NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+                                    NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
                                 },
                                 onDelete: {
                                     expense.items.removeAll { $0.id == item.id }
                                     // Trigger model context save for real-time updates
                                     try? modelContext.save()
+                                    reconcileSplitsEvenly()
                                     NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
                                     NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
                                 }
@@ -275,8 +275,45 @@ struct ExpenseDetailView: View {
         
         // Save changes
         try? modelContext.save()
+        reconcileSplitsEvenly()
         NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
         NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
+    }
+    
+    private func reconcileSplitsEvenly() {
+        // Evenly rebalance split requests and participant shares to match expense.totalCost
+        let meRaw = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
+        let me = meRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        // Count actual non-user request rows (do NOT collapse same names)
+        let nonUserRequestCount = expense.splitRequests.filter { $0.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != me }.count
+        let participantCount = max(1, nonUserRequestCount + 1) // include current user
+        let perShare = expense.totalCost / Double(participantCount)
+
+        // Update all existing requests for non-user participants
+        for req in expense.splitRequests {
+            let name = req.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if name == me {
+                req.amount = perShare
+                req.status = .paid
+            } else {
+                req.amount = perShare
+            }
+        }
+
+        // Update or create participant rows for splitParticipants
+        var hadMine = false
+        for p in expense.splitParticipants {
+            let name = p.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if name == me { p.amount = perShare; hadMine = true } else { p.amount = perShare }
+        }
+        if !hadMine {
+            let p = SplitParticipantData(name: meRaw, amount: perShare, percentage: 0, weight: 1, email: "", paymentMethod: "", expense: expense)
+            modelContext.insert(p)
+            expense.splitParticipants.append(p)
+        }
+
+        try? modelContext.save()
     }
 }
 
@@ -509,11 +546,11 @@ struct EditableExpenseItemRow: View {
     let onUpdate: (ExpenseItem) -> Void
     let onDelete: () -> Void
     @State private var isEditing = false
-    @State private var priceText = ""
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var showingDeleteConfirmation = false
     @FocusState private var isPriceFocused: Bool
+    private let priceFormat: FloatingPointFormatStyle<Double> = .number.precision(.fractionLength(0...2))
     
     var body: some View {
         HStack {
@@ -524,21 +561,20 @@ struct EditableExpenseItemRow: View {
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .accessibilityLabel("Item name")
                         
-                        Text("$")
-                            .foregroundColor(.secondary)
-                            .font(.caption)
-                        
-                        TextField("0.00", text: $priceText)
+                        TextField("Price", value: $item.price, format: priceFormat)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .keyboardType(.decimalPad)
-                            .frame(width: 80)
+                            .frame(width: 90)
                             .accessibilityLabel("Price")
-                            .onChange(of: priceText) { _, newValue in
-                                priceText = sanitizePriceInput(newValue)
-                            }
                             .submitLabel(.done)
                             .onSubmit { saveChanges() }
                             .focused($isPriceFocused)
+                            .onChange(of: item.price) { _, _ in
+                                // Persist partial edits so charts can update even before Save
+                                try? modelContext.save()
+                                NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+                                NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
+                            }
                     }
                     
                     HStack(spacing: 20) {
@@ -584,7 +620,7 @@ struct EditableExpenseItemRow: View {
         }
         .background(Color.clear)
         .contentShape(Rectangle())
-        .onAppear { priceText = String(format: "%.2f", item.price) }
+        .onAppear { }
         // Swipe right to edit
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
@@ -626,45 +662,7 @@ struct EditableExpenseItemRow: View {
     
     private var isValidForSaving: Bool {
         let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let priceValue = Double(sanitizedPriceText)
-        return !trimmedName.isEmpty && priceValue != nil && priceValue! >= 0
-    }
-    
-    private var sanitizedPriceText: String {
-        // Remove any invalid characters and ensure proper decimal format
-        let filtered = priceText.filter { "0123456789.".contains($0) }
-        let components = filtered.components(separatedBy: ".")
-        
-        if components.count <= 1 {
-            return filtered
-        } else if components.count == 2 {
-            let wholePart = components[0]
-            let decimalPart = String(components[1].prefix(2))
-            return wholePart + "." + decimalPart
-        } else {
-            // Multiple decimal points - keep only the first one
-            return components[0] + "." + components.dropFirst().joined()
-        }
-    }
-    
-    private func sanitizePriceInput(_ input: String) -> String {
-        // Remove any invalid characters first
-        let validChars = input.filter { "0123456789.".contains($0) }
-        
-        // Handle multiple decimal points
-        let components = validChars.components(separatedBy: ".")
-        if components.count <= 1 {
-            return validChars
-        } else if components.count == 2 {
-            let wholePart = components[0]
-            let decimalPart = String(components[1].prefix(2)) // Limit to 2 decimal places
-            return wholePart + "." + decimalPart
-        } else {
-            // Multiple decimal points - keep only the first one
-            let wholePart = components[0]
-            let decimalPart = String(components.dropFirst().joined().prefix(2))
-            return wholePart + "." + decimalPart
-        }
+        return !trimmedName.isEmpty
     }
     
     private func startEditing() {
@@ -680,7 +678,6 @@ struct EditableExpenseItemRow: View {
     private func cancelEditing() {
         withAnimation(.easeInOut(duration: 0.1)) {
             isEditing = false
-            priceText = String(format: "%.2f", item.price)
             item.name = item.name // Reset any unsaved name changes
         }
     }
@@ -694,7 +691,6 @@ struct EditableExpenseItemRow: View {
     }
     
     private func saveChanges() {
-        priceText = sanitizePriceInput(priceText)
         let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedName.isEmpty else {
@@ -702,16 +698,10 @@ struct EditableExpenseItemRow: View {
             showingAlert = true
             return
         }
-        
-        guard let price = Double(sanitizedPriceText), price >= 0 else {
-            alertMessage = "Please enter a valid price (0.00 or higher)"
-            showingAlert = true
-            return
-        }
-        
+        // Ensure non-negative price
+        if item.price < 0 { item.price = 0 }
         // Ensure name is trimmed
         item.name = trimmedName
-        item.price = price
         
         // Haptic feedback for successful save
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
