@@ -86,7 +86,8 @@ struct GroupsView: View {
                         expenseToEdit: $expenseToEdit,
                         onToggleSelection: toggleSelection,
                         onUpdateStatus: updateStatus,
-                        onDeleteRequest: deleteRequest
+                        onDeleteRequest: deleteRequest,
+                        expandedGroups: $expandedGroups
                     )
                     
                     SettledSection(
@@ -97,13 +98,19 @@ struct GroupsView: View {
                         expenseToEdit: $expenseToEdit,
                         onToggleSelection: toggleSelection,
                         onUpdateStatus: updateStatus,
-                        onDeleteRequest: deleteRequest
+                        onDeleteRequest: deleteRequest,
+                        expandedSettledGroups: $expandedSettledGroups
                     )
                 }
             }
             .navigationTitle("Split Person History")
             .navigationBarTitleDisplayMode(.large)
             .navigationBarBackButtonHidden(false)
+            .onAppear {
+                // Collapse any expanded groups when returning to this tab
+                expandedGroups.removeAll()
+                expandedSettledGroups.removeAll()
+            }
             .onDisappear {
                 // Reset expanded states when navigating away from this tab
                 expandedGroups.removeAll()
@@ -305,7 +312,7 @@ struct UnsettledSection: View {
     let onToggleSelection: (SplitRequest) -> Void
     let onUpdateStatus: (SplitRequest, RequestStatus) -> Void
     let onDeleteRequest: (SplitRequest) -> Void
-    @State private var expandedGroups: Set<String> = []
+    @Binding var expandedGroups: Set<String>
     
     var body: some View {
         Section("Unsettled") {
@@ -397,7 +404,7 @@ struct SettledSection: View {
     let onToggleSelection: (SplitRequest) -> Void
     let onUpdateStatus: (SplitRequest, RequestStatus) -> Void
     let onDeleteRequest: (SplitRequest) -> Void
-    @State private var expandedSettledGroups: Set<String> = []
+    @Binding var expandedSettledGroups: Set<String>
     
     var body: some View {
         Section("Settled") {

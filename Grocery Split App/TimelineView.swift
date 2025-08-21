@@ -477,6 +477,7 @@ struct RecentExpensesView: View {
     @EnvironmentObject private var dashboardVM: DashboardViewModelWrapper
     @State private var expenseToDelete: Expense?
     @State private var showingDeleteConfirmation = false
+    @State private var showingBulkDeleteConfirmation = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -500,7 +501,7 @@ struct RecentExpensesView: View {
                         Spacer()
                         if isSelectionMode {
                             if !selection.isEmpty {
-                                Button(role: .destructive) { deleteSelected() } label: { Label("Delete", systemImage: "trash") }
+                                Button(role: .destructive) { showingBulkDeleteConfirmation = true } label: { Label("Delete", systemImage: "trash") }
                             }
                             Button("Done") { exitSelection() }
                         }
@@ -578,6 +579,22 @@ struct RecentExpensesView: View {
         } message: {
             if let expense = expenseToDelete {
                 Text("Are you sure you want to delete \"\(expense.name)\"? This action cannot be undone.")
+            }
+        }
+        .alert("Delete Selected?", isPresented: $showingBulkDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                showingBulkDeleteConfirmation = false
+            }
+            Button("Delete", role: .destructive) {
+                deleteSelected()
+                showingBulkDeleteConfirmation = false
+            }
+        } message: {
+            let count = selection.count
+            if count == expenses.count {
+                Text("You are about to delete ALL recent expenses (\(count)). This cannot be undone.")
+            } else {
+                Text("Delete \(count) selected expense(s)? This cannot be undone.")
             }
         }
     }
