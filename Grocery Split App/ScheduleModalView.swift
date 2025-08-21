@@ -14,11 +14,17 @@ struct ScheduleModalView: View {
     @State private var customMessage = "Friendly reminder about your payment! 💰"
     
     var filteredSelectedRequests: [SplitRequest] {
-        // Show all requests if none specifically selected, otherwise show only selected ones
+        // Only unsettled (non-paid) and exclude current user
+        let me = (UserDefaults.standard.string(forKey: "userName") ?? "Me").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let base: [SplitRequest]
         if selectedRequests.isEmpty {
-            return allRequests
+            base = allRequests
+        } else {
+            base = allRequests.filter { selectedRequests.contains($0.id) }
         }
-        return allRequests.filter { selectedRequests.contains($0.id) }
+        return base.filter { req in
+            req.status != .paid && req.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != me
+        }
     }
     
     var body: some View {
@@ -116,28 +122,22 @@ struct ScheduleModalView: View {
                 .font(.title3)
                 .fontWeight(.semibold)
             
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 Button("Next Week") {
                     selectedDate = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: Date()) ?? Date()
                 }
-                .font(.body)
-                .fontWeight(.medium)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
                 .buttonStyle(.borderedProminent)
                 .tint(.blue)
-                
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+
                 Button("Next Month") {
                     selectedDate = Calendar.current.date(byAdding: .month, value: 1, to: Date()) ?? Date()
                 }
-                .font(.body)
-                .fontWeight(.medium)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
-                
-                Spacer()
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
             }
         }
     }
