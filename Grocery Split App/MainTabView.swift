@@ -46,6 +46,8 @@ struct GroupsView: View {
     @State private var isSelectionMode = false
     @State private var pendingAction: BulkAction?
     @State private var groupPendingDelete: String? = nil
+    @State private var expandedGroups: Set<String> = []
+    @State private var expandedSettledGroups: Set<String> = []
 
     enum BulkAction: Identifiable {
         case paid, pending, delete
@@ -102,6 +104,11 @@ struct GroupsView: View {
             .navigationTitle("Split Person History")
             .navigationBarTitleDisplayMode(.large)
             .navigationBarBackButtonHidden(false)
+            .onDisappear {
+                // Reset expanded states when navigating away from this tab
+                expandedGroups.removeAll()
+                expandedSettledGroups.removeAll()
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingScheduleSheet = true }) {
@@ -431,10 +438,10 @@ struct SettledSection: View {
                         Button("Delete", role: .destructive) { groupPendingDelete = group }
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        Button(isExpanded ? "Collapse" : "Expand") {
-                            if isExpanded { expandedSettledGroups.remove(group) }
-                            else { expandedSettledGroups.insert(group) }
+                        Button("Restore") {
+                            groupRequests.forEach { onUpdateStatus($0, .pending) }
                         }
+                        .tint(.orange)
                     }
                     // Participant rows
                     if isExpanded {

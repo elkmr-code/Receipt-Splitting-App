@@ -559,6 +559,12 @@ struct RecentExpensesView: View {
         .background(Color(.systemBackground))
         .cornerRadius(16)
         .shadow(color: .black.opacity(0.05), radius: 10)
+        .onDisappear {
+            // Reset selection state when navigating away from timeline
+            if isSelectionMode {
+                exitSelection()
+            }
+        }
         .alert("Delete Expense", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
                 expenseToDelete = nil
