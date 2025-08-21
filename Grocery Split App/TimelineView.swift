@@ -108,9 +108,8 @@ struct TimelineView: View {
         .sheet(isPresented: $showingAddExpense) {
             QuickAddExpenseView()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .expenseDataChanged)) { _ in
-            viewModel.fetchExpenses()
-        }
+        .onReceive(NotificationCenter.default.publisher(for: .expenseDataChanged)) { _ in viewModel.fetchExpenses() }
+        .onReceive(NotificationCenter.default.publisher(for: .splitRequestsChanged)) { _ in viewModel.fetchExpenses() }
         .confirmationDialog("Scan", isPresented: $showingScanOptions) {
             Button("Receipt (OCR)") { showingReceiptCamera = true }
             Button("Barcode / QR") { showingCodeCamera = true }

@@ -48,6 +48,7 @@ struct GroupsView: View {
     @State private var groupPendingDelete: String? = nil
     @State private var expandedGroups: Set<String> = []
     @State private var expandedSettledGroups: Set<String> = []
+    @State private var refreshToken = UUID()
 
     enum BulkAction: Identifiable {
         case paid, pending, delete
@@ -116,6 +117,7 @@ struct GroupsView: View {
                 expandedGroups.removeAll()
                 expandedSettledGroups.removeAll()
             }
+            .id(refreshToken)
             .navigationBarItems(trailing:
                 Button(action: { showingScheduleSheet = true }) {
                     Image(systemName: "calendar")
@@ -155,6 +157,13 @@ struct GroupsView: View {
                 Button("Cancel", role: .cancel) { groupPendingDelete = nil }
             } message: {
                 Text(deleteGroupAlertMessage())
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .expenseDataChanged)) { _ in
+                // Force list to recompute derived values (like expense.totalCost)
+                refreshToken = UUID()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .splitRequestsChanged)) { _ in
+                refreshToken = UUID()
             }
         }
     }
@@ -358,7 +367,7 @@ struct UnsettledSection: View {
                             }
                         }
                         Spacer()
-                        Text("$\(groupRequests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
+                        Text("$\(groupRequests.first?.expense?.totalCost ?? groupRequests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
                             .fontWeight(.semibold)
                         Button(action: {
                             if isExpanded { expandedGroups.remove(group) }
@@ -450,7 +459,7 @@ struct SettledSection: View {
                             }
                         }
                         Spacer()
-                        Text("$\(groupRequests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
+                        Text("$\(groupRequests.first?.expense?.totalCost ?? groupRequests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
                             .fontWeight(.semibold)
                         Button(action: {
                             if isExpanded { expandedSettledGroups.remove(group) }

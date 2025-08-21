@@ -198,6 +198,7 @@ struct ExpenseDetailView: View {
                                     // Trigger model context save for real-time updates
                                     try? modelContext.save()
                                     NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+                                    NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
                                 }
                             )
                             .padding(.vertical, 2)
@@ -275,6 +276,7 @@ struct ExpenseDetailView: View {
         // Save changes
         try? modelContext.save()
         NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
     }
 }
 
@@ -502,7 +504,8 @@ struct SplitExpenseView: View {
 }
 
 struct EditableExpenseItemRow: View {
-    @State private var item: ExpenseItem
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var item: ExpenseItem
     let onUpdate: (ExpenseItem) -> Void
     let onDelete: () -> Void
     @State private var isEditing = false
@@ -510,36 +513,7 @@ struct EditableExpenseItemRow: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var showingDeleteConfirmation = false
-    
-    init(item: ExpenseItem, onUpdate: @escaping (ExpenseItem) -> Void, onDelete: @escaping () -> Void) {
-        self._item = State(initialValue: item)
-        self.onUpdate = onUpdate
-        self.onDelete = onDelete
-        self._priceText = State(initialValue: String(format: "%.2f", item.price))
-    }
-    
-    private var isValidForSaving: Bool {
-        let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let priceValue = Double(sanitizedPriceText)
-        return !trimmedName.isEmpty && priceValue != nil && priceValue! >= 0
-    }
-    
-    private var sanitizedPriceText: String {
-        // Remove any invalid characters and ensure proper decimal format
-        let filtered = priceText.filter { "0123456789.".contains($0) }
-        let components = filtered.components(separatedBy: ".")
-        
-        if components.count <= 1 {
-            return filtered
-        } else if components.count == 2 {
-            let wholePart = components[0]
-            let decimalPart = String(components[1].prefix(2))
-            return wholePart + "." + decimalPart
-        } else {
-            // Multiple decimal points - keep only the first one
-            return components[0] + "." + components.dropFirst().joined()
-        }
-    }
+    @FocusState private var isPriceFocused: Bool
     
     var body: some View {
         HStack {
@@ -562,6 +536,9 @@ struct EditableExpenseItemRow: View {
                             .onChange(of: priceText) { _, newValue in
                                 priceText = sanitizePriceInput(newValue)
                             }
+                            .submitLabel(.done)
+                            .onSubmit { saveChanges() }
+                            .focused($isPriceFocused)
                     }
                     
                     HStack(spacing: 20) {
@@ -607,6 +584,7 @@ struct EditableExpenseItemRow: View {
         }
         .background(Color.clear)
         .contentShape(Rectangle())
+        .onAppear { priceText = String(format: "%.2f", item.price) }
         // Swipe right to edit
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
@@ -643,6 +621,29 @@ struct EditableExpenseItemRow: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
+        }
+    }
+    
+    private var isValidForSaving: Bool {
+        let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let priceValue = Double(sanitizedPriceText)
+        return !trimmedName.isEmpty && priceValue != nil && priceValue! >= 0
+    }
+    
+    private var sanitizedPriceText: String {
+        // Remove any invalid characters and ensure proper decimal format
+        let filtered = priceText.filter { "0123456789.".contains($0) }
+        let components = filtered.components(separatedBy: ".")
+        
+        if components.count <= 1 {
+            return filtered
+        } else if components.count == 2 {
+            let wholePart = components[0]
+            let decimalPart = String(components[1].prefix(2))
+            return wholePart + "." + decimalPart
+        } else {
+            // Multiple decimal points - keep only the first one
+            return components[0] + "." + components.dropFirst().joined()
         }
     }
     
@@ -693,6 +694,7 @@ struct EditableExpenseItemRow: View {
     }
     
     private func saveChanges() {
+        priceText = sanitizePriceInput(priceText)
         let trimmedName = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedName.isEmpty else {
@@ -715,11 +717,16 @@ struct EditableExpenseItemRow: View {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
         
+        // Persist immediately and notify observers so totals/charts update now
         onUpdate(item)
+        try? modelContext.save()
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+        NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
         
         withAnimation(.easeInOut(duration: 0.1)) {
             isEditing = false
         }
+        isPriceFocused = false
     }
 }
 
