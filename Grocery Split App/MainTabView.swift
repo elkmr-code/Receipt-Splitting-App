@@ -298,6 +298,7 @@ struct UnsettledSection: View {
     let onToggleSelection: (SplitRequest) -> Void
     let onUpdateStatus: (SplitRequest, RequestStatus) -> Void
     let onDeleteRequest: (SplitRequest) -> Void
+    @State private var expandedGroups: Set<String> = []
     
     var body: some View {
         Section("Unsettled") {
@@ -307,24 +308,71 @@ struct UnsettledSection: View {
                     .foregroundColor(.secondary)
                     .padding(.vertical, 8)
             } else {
-                ForEach(requests, id: \.key) { group, requests in
-                    ExpandableOrderRow(
-                        orderName: group,
-                        requests: requests,
-                        isSelectionMode: isSelectionMode,
-                        selectedForSchedule: $selectedForSchedule,
-                        onToggleSelection: onToggleSelection,
-                        onUpdateStatus: onUpdateStatus,
-                        onDeleteGroup: { groupPendingDelete = group },
-                        onDeleteRequest: onDeleteRequest,
-                        onOpenExpense: { if let e = $0 { expenseToEdit = e } }
-                    )
+                ForEach(requests, id: \.key) { group, groupRequests in
+                    let isExpanded = expandedGroups.contains(group)
+                    // Header Row
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            let components = group.split(separator: "|")
+                            Text(String(components.first ?? Substring(group)))
+                                .font(.headline)
+                            if components.count >= 3, let ts = Double(String(components[2])) {
+                                Text(Date(timeIntervalSince1970: ts), style: .date)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Text("$\(groupRequests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
+                            .fontWeight(.semibold)
+                        Button(action: {
+                            if isExpanded { expandedGroups.remove(group) }
+                            else { expandedGroups.insert(group) }
+                        }) {
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { if let e = groupRequests.first?.expense { expenseToEdit = e } }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button("Delete", role: .destructive) { groupPendingDelete = group }
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        Button("Mark All Paid") { requests.forEach { onUpdateStatus($0, .paid) } }
-                            .tint(.green)
+                        if groupRequests.allSatisfy({ $0.status == .paid }) {
+                            Button("Mark Pending") { groupRequests.forEach { onUpdateStatus($0, .pending) } }
+                                .tint(.orange)
+                        } else {
+                            Button("Mark Paid") { groupRequests.forEach { onUpdateStatus($0, .paid) } }
+                                .tint(.green)
+                        }
+                    }
+                    // Participant Rows
+                    if isExpanded {
+                        ForEach(groupRequests) { req in
+                            HStack(spacing: 12) {
+                                if isSelectionMode {
+                                    Button(action: { onToggleSelection(req) }) {
+                                        Image(systemName: selectedForSchedule.contains(req.id) ? "checkmark.circle.fill" : "circle")
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                GroupRequestRow(request: req)
+                                    .onTapGesture { expenseToEdit = req.expense }
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.leading, 16)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button("Delete", role: .destructive) { onDeleteRequest(req) }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                if req.status == .paid {
+                                    Button("Pending") { onUpdateStatus(req, .pending) }.tint(.orange)
+                                } else {
+                                    Button("Paid") { onUpdateStatus(req, .paid) }.tint(.green)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -342,6 +390,7 @@ struct SettledSection: View {
     let onToggleSelection: (SplitRequest) -> Void
     let onUpdateStatus: (SplitRequest, RequestStatus) -> Void
     let onDeleteRequest: (SplitRequest) -> Void
+    @State private var expandedSettledGroups: Set<String> = []
     
     var body: some View {
         Section("Settled") {
@@ -351,24 +400,68 @@ struct SettledSection: View {
                     .foregroundColor(.secondary)
                     .padding(.vertical, 8)
             } else {
-                ForEach(requests, id: \.key) { group, requests in
-                    ExpandableOrderRow(
-                        orderName: group,
-                        requests: requests,
-                        isSelectionMode: isSelectionMode,
-                        selectedForSchedule: $selectedForSchedule,
-                        onToggleSelection: onToggleSelection,
-                        onUpdateStatus: onUpdateStatus,
-                        onDeleteGroup: { groupPendingDelete = group },
-                        onDeleteRequest: onDeleteRequest,
-                        onOpenExpense: { if let e = $0 { expenseToEdit = e } }
-                    )
+                ForEach(requests, id: \.key) { group, groupRequests in
+                    let isExpanded = expandedSettledGroups.contains(group)
+                    // Header row
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            let comps = group.split(separator: "|")
+                            Text(String(comps.first ?? Substring(group)))
+                                .font(.headline)
+                            if comps.count >= 3, let ts = Double(String(comps[2])) {
+                                Text(Date(timeIntervalSince1970: ts), style: .date)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Text("$\(groupRequests.reduce(0) { $0 + $1.amount }, specifier: "%.2f")")
+                            .fontWeight(.semibold)
+                        Button(action: {
+                            if isExpanded { expandedSettledGroups.remove(group) }
+                            else { expandedSettledGroups.insert(group) }
+                        }) {
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture { if let e = groupRequests.first?.expense { expenseToEdit = e } }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button("Delete", role: .destructive) { groupPendingDelete = group }
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                        Button("Mark All Pending") { requests.forEach { onUpdateStatus($0, .pending) } }
-                            .tint(.orange)
+                        Button(isExpanded ? "Collapse" : "Expand") {
+                            if isExpanded { expandedSettledGroups.remove(group) }
+                            else { expandedSettledGroups.insert(group) }
+                        }
+                    }
+                    // Participant rows
+                    if isExpanded {
+                        ForEach(groupRequests) { req in
+                            HStack(spacing: 12) {
+                                if isSelectionMode {
+                                    Button(action: { onToggleSelection(req) }) {
+                                        Image(systemName: selectedForSchedule.contains(req.id) ? "checkmark.circle.fill" : "circle")
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                GroupRequestRow(request: req)
+                                    .onTapGesture { expenseToEdit = req.expense }
+                            }
+                            .contentShape(Rectangle())
+                            .padding(.leading, 16)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button("Delete", role: .destructive) { onDeleteRequest(req) }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                if req.status == .paid {
+                                    Button("Pending") { onUpdateStatus(req, .pending) }.tint(.orange)
+                                } else {
+                                    Button("Paid") { onUpdateStatus(req, .paid) }.tint(.green)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -473,6 +566,18 @@ struct ExpandableOrderRow: View {
                 Image(systemName: "trash") 
             }
             .buttonStyle(.plain)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button("Delete", role: .destructive) { onDeleteGroup() }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            if requests.allSatisfy({ $0.status == .paid }) {
+                Button("Mark All Pending") { requests.forEach { onUpdateStatus($0, .pending) } }
+                    .tint(.orange)
+            } else {
+                Button("Mark All Paid") { requests.forEach { onUpdateStatus($0, .paid) } }
+                    .tint(.green)
+            }
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
