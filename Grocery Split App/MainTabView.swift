@@ -116,15 +116,13 @@ struct GroupsView: View {
                 expandedGroups.removeAll()
                 expandedSettledGroups.removeAll()
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { showingScheduleSheet = true }) {
-                        Image(systemName: "calendar")
-                            .font(.title3)
-                            .foregroundColor(.blue)
-                    }
+            .navigationBarItems(trailing:
+                Button(action: { showingScheduleSheet = true }) {
+                    Image(systemName: "calendar")
+                        .font(.title3)
+                        .foregroundColor(.blue)
                 }
-            }
+            )
             .sheet(isPresented: $showingScheduleSheet) {
                 ScheduleModalView(
                     selectedRequests: selectedForSchedule,
@@ -156,12 +154,25 @@ struct GroupsView: View {
                 }
                 Button("Cancel", role: .cancel) { groupPendingDelete = nil }
             } message: {
-                if let g = groupPendingDelete { Text("This will delete all requests under \"\(g)\".") }
+                Text(deleteGroupAlertMessage())
             }
         }
     }
     
     // MARK: - Helper Functions
+    private func deleteGroupAlertMessage() -> String {
+        guard let g = groupPendingDelete else {
+            return "This will remove all split people for this order. The expense will remain under you as paid."
+        }
+        let parts = g.split(separator: "|")
+        let title = parts.first.map(String.init) ?? "This order"
+        var dateString = ""
+        if parts.count >= 3, let ts = Double(String(parts[2])) {
+            dateString = Date(timeIntervalSince1970: ts).formatted(date: .abbreviated, time: .omitted)
+        }
+        let whenText = dateString.isEmpty ? "" : " on \(dateString)"
+        return "This will remove all split people for \"\(title)\"\(whenText). The expense will remain under you as paid."
+    }
     private func settledOrders() -> [(key: String, value: [SplitRequest])] {
         let grouped = Dictionary(grouping: splitRequests) { request in
             let expenseName = request.expense?.name ?? "Unknown Expense"
@@ -233,13 +244,23 @@ struct GroupsView: View {
     }
 
     private func deleteGroup(named group: String) {
-        let targets = splitRequests.filter { ($0.expense?.name ?? "Unknown Expense") == group }
+        // Parse "name|expenseId|timestamp"
+        let parts = group.split(separator: "|")
+        let targetExpenseId = parts.count >= 2 ? String(parts[1]) : nil
+        let targets = splitRequests.filter { req in
+            if let idString = targetExpenseId, let expId = req.expense?.id.uuidString { return expId == idString }
+            // Fallback by name if id missing
+            let name = req.expense?.name ?? "Unknown Expense"
+            return name == String(parts.first ?? Substring(group))
+        }
         for r in targets { modelContext.delete(r) }
         if let expense = targets.first?.expense {
+            // Remove all split participants; keep expense itself so it's considered fully yours
             for p in expense.splitParticipants { modelContext.delete(p) }
         }
         try? modelContext.save()
         NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
+        NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
     }
 
     private func toggleSelection(_ request: SplitRequest) {
@@ -446,7 +467,11 @@ struct SettledSection: View {
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
                         Button("Restore") {
-                            groupRequests.forEach { onUpdateStatus($0, .pending) }
+                            let currentUser = (UserDefaults.standard.string(forKey: "userName") ?? "Me").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                            groupRequests.forEach { req in
+                                let name = req.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                                onUpdateStatus(req, name == currentUser ? .paid : .pending)
+                            }
                         }
                         .tint(.orange)
                     }
@@ -755,7 +780,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }

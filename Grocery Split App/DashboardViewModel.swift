@@ -152,14 +152,13 @@ class DashboardViewModel: ObservableObject {
     
     // MARK: - Category Breakdown
     private func calculateCategoryBreakdown(from expenses: [Expense]) {
-        var categoryTotals: [ExpenseCategory: Double] = [:]
+        var categoryUserNetTotals: [ExpenseCategory: Double] = [:]
         var categoryOwed: [ExpenseCategory: Double] = [:]
         
         let currentUserNameRaw = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
         let currentUserName = currentUserNameRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         for expense in expenses {
-            categoryTotals[expense.category, default: 0] += expense.totalCost
-            // Sum outstanding split requests (exclude paid). Clamp to [0, expense.totalCost]
+            // Sum outstanding split requests (exclude paid) from non-user participants
             let outstandingRaw = expense.splitRequests
                 .filter { req in
                     guard req.status != .paid else { return false }
@@ -169,11 +168,13 @@ class DashboardViewModel: ObservableObject {
                 .reduce(0.0) { $0 + max(0, $1.amount) }
             let outstanding = min(max(outstandingRaw, 0), expense.totalCost)
             categoryOwed[expense.category, default: 0] += outstanding
+            let userNet = max(0, expense.totalCost - outstanding)
+            categoryUserNetTotals[expense.category, default: 0] += userNet
         }
         
-        let total = categoryTotals.values.reduce(0, +)
+        let total = categoryUserNetTotals.values.reduce(0, +)
         
-        categoryBreakdown = categoryTotals.map { category, amount in
+        categoryBreakdown = categoryUserNetTotals.map { category, amount in
             var spending = CategorySpending(
                 category: category.rawValue,
                 amount: amount,
@@ -234,13 +235,13 @@ class DashboardViewModel: ObservableObject {
             userSpentItem.percentage = (netUserSpent / total) * 100
             
             var peopleOweItem = SplitSummary(
-                label: "People owe me",
+                label: totalOwedToUser > 0 ? "People owe me" : "All settled 🎉",
                 amount: totalOwedToUser,
                 color: .green
             )
             peopleOweItem.percentage = (totalOwedToUser / total) * 100
             
-            splitSummary = [userSpentItem, peopleOweItem].filter { $0.amount > 0 }
+            splitSummary = [userSpentItem, peopleOweItem].filter { $0.amount > 0 || $0.label.contains("settled") }
         } else {
             splitSummary = []
         }
