@@ -29,6 +29,12 @@ struct ExpenseDetailView: View {
                     }
                     
                     Spacer()
+                    Button(action: { showingEditSheet = true }) {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                    }
+                    .accessibilityLabel("Edit expense")
                 }
                 
                 Divider()
@@ -194,12 +200,11 @@ struct ExpenseDetailView: View {
                                     NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
                                 }
                             )
+                            .padding(.vertical, 2)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
                             .background(Color(.systemBackground))
                             .cornerRadius(8)
                             .shadow(color: .black.opacity(0.05), radius: 2)
-                            .padding(.vertical, 2)
-                            
-                            
                         }
                     }
                     .listStyle(.plain)
@@ -209,7 +214,6 @@ struct ExpenseDetailView: View {
                 }
             }
         }
-        .padding()
         .navigationTitle("Expense Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -585,7 +589,7 @@ struct EditableExpenseItemRow: View {
                     .font(.caption)
                     .fontWeight(.medium)
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .transition(.move(edge: .trailing).combined(with: .opacity))
             } else {
                 Text(item.name)
                     .font(.body)
@@ -663,7 +667,7 @@ struct EditableExpenseItemRow: View {
     }
     
     private func startEditing() {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8, blendDuration: 0)) {
+        withAnimation(.easeInOut(duration: 0.1)) {
             isEditing = true
         }
         
@@ -673,7 +677,7 @@ struct EditableExpenseItemRow: View {
     }
     
     private func cancelEditing() {
-        withAnimation(.easeInOut(duration: 0.3)) {
+        withAnimation(.easeInOut(duration: 0.1)) {
             isEditing = false
             priceText = String(format: "%.2f", item.price)
             item.name = item.name // Reset any unsaved name changes
@@ -713,7 +717,7 @@ struct EditableExpenseItemRow: View {
         
         onUpdate(item)
         
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8, blendDuration: 0)) {
+        withAnimation(.easeInOut(duration: 0.1)) {
             isEditing = false
         }
     }
