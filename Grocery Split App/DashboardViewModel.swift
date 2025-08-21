@@ -152,29 +152,22 @@ class DashboardViewModel: ObservableObject {
     
     // MARK: - Category Breakdown
     private func calculateCategoryBreakdown(from expenses: [Expense]) {
-        var categoryUserNetTotals: [ExpenseCategory: Double] = [:]
+        var categoryUserTotals: [ExpenseCategory: Double] = [:]
         var categoryOwed: [ExpenseCategory: Double] = [:]
-        
-        let currentUserNameRaw = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
-        let currentUserName = currentUserNameRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
         for expense in expenses {
-            // Sum outstanding split requests (exclude paid) from non-user participants
-            let outstandingRaw = expense.splitRequests
-                .filter { req in
-                    guard req.status != .paid else { return false }
-                    let participant = req.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                    return participant != currentUserName
-                }
-                .reduce(0.0) { $0 + max(0, $1.amount) }
-            let outstanding = min(max(outstandingRaw, 0), expense.totalCost)
+            // User's own portion for this expense (independent of settlement)
+            let myShare = userShare(for: expense)
+            categoryUserTotals[expense.category, default: 0] += myShare
+
+            // Outstanding (others still owe me) for this expense
+            let outstanding = outstandingOwedToUser(for: expense)
             categoryOwed[expense.category, default: 0] += outstanding
-            let userNet = max(0, expense.totalCost - outstanding)
-            categoryUserNetTotals[expense.category, default: 0] += userNet
         }
-        
-        let total = categoryUserNetTotals.values.reduce(0, +)
-        
-        categoryBreakdown = categoryUserNetTotals.map { category, amount in
+
+        let total = categoryUserTotals.values.reduce(0, +)
+
+        categoryBreakdown = categoryUserTotals.map { category, amount in
             var spending = CategorySpending(
                 category: category.rawValue,
                 amount: amount,
@@ -202,49 +195,68 @@ class DashboardViewModel: ObservableObject {
     
     // MARK: - Split Summary Calculation
     private func calculateSplitSummary(from expenses: [Expense]) {
-        let currentUserNameRaw = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
-        let currentUserName = currentUserNameRaw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        
-        var totalSpent: Double = 0.0
+        var totalUserShare: Double = 0.0
         var totalOwedToUser: Double = 0.0
-        
+
         for expense in expenses {
-            totalSpent += expense.totalCost
-            
-            // Calculate how much people owe the user for this expense
-            let owedAmount = expense.splitRequests
-                .filter { req in
-                    guard req.status != .paid else { return false }
-                    let participant = req.participantName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                    return participant != currentUserName
-                }
-                .reduce(0.0) { $0 + max(0, $1.amount) }
-            
-            totalOwedToUser += min(max(owedAmount, 0), expense.totalCost)
+            totalUserShare += userShare(for: expense)
+            totalOwedToUser += outstandingOwedToUser(for: expense)
         }
-        
-        let netUserSpent = max(0, totalSpent - totalOwedToUser)
-        let total = totalSpent
-        
+
+        let total = totalUserShare + totalOwedToUser
+
         if total > 0 {
             var userSpentItem = SplitSummary(
                 label: "You spent",
-                amount: netUserSpent,
+                amount: totalUserShare,
                 color: .blue
             )
-            userSpentItem.percentage = (netUserSpent / total) * 100
-            
+            userSpentItem.percentage = (totalUserShare / total) * 100
+
             var peopleOweItem = SplitSummary(
                 label: totalOwedToUser > 0 ? "People owe me" : "All settled 🎉",
                 amount: totalOwedToUser,
                 color: .green
             )
-            peopleOweItem.percentage = (totalOwedToUser / total) * 100
-            
+            peopleOweItem.percentage = total > 0 ? (totalOwedToUser / total) * 100 : 0
+
             splitSummary = [userSpentItem, peopleOweItem].filter { $0.amount > 0 || $0.label.contains("settled") }
         } else {
             splitSummary = []
         }
+    }
+
+    // MARK: - Helpers for shares/owed
+    private func normalizedName(_ name: String) -> String {
+        return name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func currentUserNameKey() -> String {
+        let raw = UserDefaults.standard.string(forKey: "userName").flatMap { $0.isEmpty ? nil : $0 } ?? "Me"
+        return normalizedName(raw)
+    }
+
+    private func userShare(for expense: Expense) -> Double {
+        let me = currentUserNameKey()
+        if let mine = expense.splitParticipants.first(where: { normalizedName($0.name) == me }) {
+            return max(0, mine.amount)
+        }
+        // Derive from others' shares if my participant row is missing
+        let others = expense.splitParticipants
+            .filter { normalizedName($0.name) != me }
+            .reduce(0.0) { $0 + max(0, $1.amount) }
+        return max(0, expense.totalCost - others)
+    }
+
+    private func outstandingOwedToUser(for expense: Expense) -> Double {
+        let me = currentUserNameKey()
+        let raw = expense.splitRequests
+            .filter { req in
+                guard req.status != .paid else { return false }
+                return normalizedName(req.participantName) != me
+            }
+            .reduce(0.0) { $0 + max(0, $1.amount) }
+        return min(max(raw, 0), expense.totalCost)
     }
     
     // MARK: - Budget Management
