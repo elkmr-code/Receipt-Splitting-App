@@ -745,6 +745,11 @@ struct EnhancedSplitExpenseView: View {
     private func restoreMethodValues(for method: SplitMethod) {
         switch method {
         case .percentageSplit:
+            // First clear all values, then restore saved percentages
+            for i in participants.indices {
+                participants[i].percentage = 0.0
+                participants[i].amount = 0.0
+            }
             for i in participants.indices {
                 if let savedPercentage = savedPercentageValues[participants[i].id] {
                     participants[i].percentage = savedPercentage
@@ -752,6 +757,11 @@ struct EnhancedSplitExpenseView: View {
                 }
             }
         case .customSplit:
+            // First clear all values, then restore saved amounts
+            for i in participants.indices {
+                participants[i].amount = 0.0
+                participants[i].percentage = 0.0
+            }
             for i in participants.indices {
                 if let savedAmount = savedCustomAmounts[participants[i].id] {
                     participants[i].amount = savedAmount
@@ -795,13 +805,20 @@ struct EnhancedSplitExpenseView: View {
             if let savedMethod = expense.splitMethod,
                let method = SplitMethod.allCases.first(where: { $0.rawValue == savedMethod }) {
                 splitMethod = method
-            }
-            
-            // Mark all methods as initialized and populate saved values
-            hasInitializedMethods = Set(SplitMethod.allCases)
-            for participant in participants {
-                savedPercentageValues[participant.id] = participant.percentage
-                savedCustomAmounts[participant.id] = participant.amount
+                
+                // Only mark the saved method as initialized and populate its specific values
+                hasInitializedMethods.insert(method)
+                for participant in participants {
+                    switch method {
+                    case .percentageSplit:
+                        savedPercentageValues[participant.id] = participant.percentage
+                    case .customSplit:
+                        savedCustomAmounts[participant.id] = participant.amount
+                    case .evenSplit:
+                        // Even split doesn't need saved values as it's calculated dynamically
+                        break
+                    }
+                }
             }
         } else if participants.isEmpty {
             // Create default participant if none exist
@@ -1017,10 +1034,8 @@ struct EnhancedSplitExpenseView: View {
             
         case .percentageSplit:
             let totalPercentage = participants.reduce(0) { $0 + $1.percentage }
-            if totalPercentage > 0 {
-                for i in participants.indices {
-                    participants[i].amount = expense.totalCost * (participants[i].percentage / 100.0)
-                }
+            for i in participants.indices {
+                participants[i].amount = expense.totalCost * (participants[i].percentage / 100.0)
             }
             
         }
