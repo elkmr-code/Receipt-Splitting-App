@@ -1395,7 +1395,7 @@ struct ParticipantRow: View {
                                 Text("\(String(format: "%.2f", remainingAmount))")
                                     .font(.body)
                                     .fontWeight(.medium)
-                                    .frame(width: 100, alignment: .leading) // Same width as regular input
+                                    .frame(width: 120, alignment: .leading) // Match input field width
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .background(Color(.systemGray5))
@@ -1406,8 +1406,8 @@ struct ParticipantRow: View {
                                     )
                             }
                             
-                            // Descriptive text under the locked box
-                            Text("Remaining amount (auto-calculated)")
+                            // Short descriptive text
+                            Text("Remaining")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .padding(.leading, 8)
@@ -1417,16 +1417,19 @@ struct ParticipantRow: View {
                             Text("$")
                                 .foregroundColor(.secondary)
                             TextField("0.00", text: Binding(
-                                get: { participant.amount == 0 ? "" : String(format: "%.2f", participant.amount) },
+                                get: { 
+                                    // Allow completely free display without formatting restrictions
+                                    participant.amount == 0 ? "" : String(participant.amount)
+                                },
                                 set: { newValue in
-                                    // Allow free typing of any numeric input without restrictions
+                                    // Allow completely free typing of any numeric input without restrictions
                                     let cleanValue = newValue.replacingOccurrences(of: "$", with: "")
                                         .replacingOccurrences(of: ",", with: "")
                                     
-                                    // Allow digits, one decimal point, and maintain user's typing freedom
+                                    // Allow digits and one decimal point - no other restrictions
                                     let filtered = cleanValue.filter { "0123456789.".contains($0) }
                                     
-                                    // Allow multiple decimal points during typing, but parse correctly
+                                    // Handle multiple decimal points during typing
                                     let components = filtered.components(separatedBy: ".")
                                     let validInput: String
                                     if components.count > 2 {
@@ -1436,13 +1439,13 @@ struct ParticipantRow: View {
                                         validInput = filtered
                                     }
                                     
-                                    // Parse the value, allowing any amount (no restrictions)
+                                    // Parse and accept any numeric value - no restrictions on amount
                                     if let value = Double(validInput) {
                                         participant.amount = value
                                     } else if validInput.isEmpty {
                                         participant.amount = 0
                                     }
-                                    // If parsing fails, keep the current amount (don't change it)
+                                    // If parsing fails, keep the current amount unchanged
                                     
                                     // Update percentage based on amount
                                     participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
@@ -1451,7 +1454,7 @@ struct ParticipantRow: View {
                             ))
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .keyboardType(.decimalPad)
-                                .frame(width: 100) // Increased width for larger amounts
+                                .frame(width: 120) // Wider field for larger amounts like $1000, $5000
                         }
                     }
                 }
@@ -1477,7 +1480,7 @@ struct ParticipantRow: View {
                                 Text("\(Int(remainingPercentage))")
                                     .font(.body)
                                     .fontWeight(.medium)
-                                    .frame(width: 80, alignment: .leading) // Same width as regular input
+                                    .frame(width: 80, alignment: .leading) // Keep percentage width consistent
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .background(Color(.systemGray5))
@@ -1489,8 +1492,8 @@ struct ParticipantRow: View {
                                 Text("%")
                             }
                             
-                            // Descriptive text under the locked box
-                            Text("Remaining percentage (auto-calculated)")
+                            // Short descriptive text
+                            Text("Remaining")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .padding(.leading, 8)
