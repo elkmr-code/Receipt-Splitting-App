@@ -1339,6 +1339,7 @@ struct ParticipantRow: View {
     // State for free text input during editing
     @State private var customAmountText: String = ""
     @State private var isEditingAmount: Bool = false
+    @State private var isTextFieldFocused: Bool = false
     
     var body: some View {
         VStack(spacing: 8) {
@@ -1392,47 +1393,39 @@ struct ParticipantRow: View {
                         let otherParticipantsTotal = allParticipants.filter { $0.id != participant.id && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.reduce(0) { $0 + $1.amount }
                         let remainingAmount = max(0, totalAmount - otherParticipantsTotal)
                         
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("$")
-                                    .foregroundColor(.secondary)
-                                // Create a fake TextField that looks like the real ones but displays remaining amount
-                                Text("\(String(format: "%.2f", remainingAmount))")
-                                    .font(.body)
-                                    .frame(width: 120, alignment: .leading)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 8)
-                                    .background(Color(.systemGray5))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color(.systemGray3), lineWidth: 1)
-                                    )
-                            }
-                            
-                            // Short descriptive text
-                            Text("Remaining")
+                        HStack {
+                            Text("$")
+                                .foregroundColor(.secondary)
+                            Text("\(String(format: "%.2f", remainingAmount))")
+                                .font(.body)
+                                .fontWeight(.medium)
+                                .frame(width: 120, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 8)
+                                .background(Color(.systemGray5))
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color(.systemGray3), lineWidth: 1)
+                                )
+                            Text("(remaining)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                                .padding(.leading, 8)
                         }
                     } else {
                         HStack {
                             Text("$")
                                 .foregroundColor(.secondary)
-                            TextField("0.00", text: Binding(
-                                get: { 
-                                    // Show raw text during editing, formatted amount otherwise
-                                    if isEditingAmount {
-                                        return customAmountText
-                                    } else {
-                                        return participant.amount == 0 ? "" : String(format: "%.2f", participant.amount)
-                                    }
-                                },
-                                set: { newValue in
+                            TextField("0.00", text: $customAmountText)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .keyboardType(.decimalPad)
+                                .frame(width: 120)
+                                .onAppear {
+                                    // Initialize text when view appears
+                                    customAmountText = participant.amount == 0 ? "" : String(format: "%.2f", participant.amount)
+                                }
+                                .onChange(of: customAmountText) { _, newValue in
                                     // Allow completely free typing - no restrictions at all
-                                    customAmountText = newValue
-                                    
-                                    // Try to parse the value for real-time updates
                                     if let value = Double(newValue) {
                                         participant.amount = value
                                         participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
@@ -1443,18 +1436,8 @@ struct ParticipantRow: View {
                                         onUpdate(participant)
                                     }
                                 }
-                            ))
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .keyboardType(.decimalPad)
-                                .frame(width: 120) // Wider field for larger amounts like $1000, $5000
-                                .onTapGesture {
-                                    // Start editing mode and initialize text
-                                    isEditingAmount = true
-                                    customAmountText = participant.amount == 0 ? "" : String(participant.amount)
-                                }
                                 .onSubmit {
-                                    // End editing and ensure final parsing
-                                    isEditingAmount = false
+                                    // Ensure final parsing when user finishes editing
                                     if let value = Double(customAmountText) {
                                         participant.amount = value
                                         participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
@@ -1481,28 +1464,23 @@ struct ParticipantRow: View {
                         let otherParticipantsTotal = allParticipants.filter { $0.id != participant.id && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.reduce(0) { $0 + $1.percentage }
                         let remainingPercentage = max(0, 100.0 - otherParticipantsTotal)
                         
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("\(Int(remainingPercentage))")
-                                    .font(.body)
-                                    .fontWeight(.medium)
-                                    .frame(width: 80, alignment: .leading) // Keep percentage width consistent
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(Color(.systemGray5))
-                                    .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(Color(.systemGray3), lineWidth: 1)
-                                    )
-                                Text("%")
-                            }
-                            
-                            // Short descriptive text
-                            Text("Remaining")
+                        HStack {
+                            Text("\(Int(remainingPercentage))")
+                                .font(.body)
+                                .fontWeight(.medium)
+                                .frame(width: 80, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 8)
+                                .background(Color(.systemGray5))
+                                .cornerRadius(8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Color(.systemGray3), lineWidth: 1)
+                                )
+                            Text("%")
+                            Text("(remaining)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                                .padding(.leading, 8)
                         }
                     } else {
                         TextField("", text: Binding(
