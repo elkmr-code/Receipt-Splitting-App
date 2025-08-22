@@ -1336,6 +1336,10 @@ struct ParticipantRow: View {
     let onUpdate: (SplitParticipant) -> Void
     let onDelete: () -> Void
     
+    // State for free text input during editing
+    @State private var customAmountText: String = ""
+    @State private var isEditingAmount: Bool = false
+    
     var body: some View {
         VStack(spacing: 8) {
             HStack {
@@ -1392,14 +1396,13 @@ struct ParticipantRow: View {
                             HStack {
                                 Text("$")
                                     .foregroundColor(.secondary)
+                                // Create a fake TextField that looks like the real ones but displays remaining amount
                                 Text("\(String(format: "%.2f", remainingAmount))")
                                     .font(.body)
-                                    .fontWeight(.medium)
-                                    .frame(width: 120, alignment: .leading) // Match input field width
-                                    .padding(.horizontal, 12)
+                                    .frame(width: 120, alignment: .leading)
+                                    .padding(.horizontal, 8)
                                     .padding(.vertical, 8)
                                     .background(Color(.systemGray5))
-                                    .cornerRadius(8)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 8)
                                             .stroke(Color(.systemGray3), lineWidth: 1)
@@ -1418,43 +1421,46 @@ struct ParticipantRow: View {
                                 .foregroundColor(.secondary)
                             TextField("0.00", text: Binding(
                                 get: { 
-                                    // Allow completely free display without formatting restrictions
-                                    participant.amount == 0 ? "" : String(participant.amount)
+                                    // Show raw text during editing, formatted amount otherwise
+                                    if isEditingAmount {
+                                        return customAmountText
+                                    } else {
+                                        return participant.amount == 0 ? "" : String(format: "%.2f", participant.amount)
+                                    }
                                 },
                                 set: { newValue in
-                                    // Allow completely free typing of any numeric input without restrictions
-                                    let cleanValue = newValue.replacingOccurrences(of: "$", with: "")
-                                        .replacingOccurrences(of: ",", with: "")
+                                    // Allow completely free typing - no restrictions at all
+                                    customAmountText = newValue
                                     
-                                    // Allow digits and one decimal point - no other restrictions
-                                    let filtered = cleanValue.filter { "0123456789.".contains($0) }
-                                    
-                                    // Handle multiple decimal points during typing
-                                    let components = filtered.components(separatedBy: ".")
-                                    let validInput: String
-                                    if components.count > 2 {
-                                        // If more than one decimal point, keep only the first one
-                                        validInput = components[0] + "." + components.dropFirst().joined()
-                                    } else {
-                                        validInput = filtered
-                                    }
-                                    
-                                    // Parse and accept any numeric value - no restrictions on amount
-                                    if let value = Double(validInput) {
+                                    // Try to parse the value for real-time updates
+                                    if let value = Double(newValue) {
                                         participant.amount = value
-                                    } else if validInput.isEmpty {
+                                        participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
+                                        onUpdate(participant)
+                                    } else if newValue.isEmpty {
                                         participant.amount = 0
+                                        participant.percentage = 0
+                                        onUpdate(participant)
                                     }
-                                    // If parsing fails, keep the current amount unchanged
-                                    
-                                    // Update percentage based on amount
-                                    participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
-                                    onUpdate(participant)
                                 }
                             ))
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .keyboardType(.decimalPad)
                                 .frame(width: 120) // Wider field for larger amounts like $1000, $5000
+                                .onTapGesture {
+                                    // Start editing mode and initialize text
+                                    isEditingAmount = true
+                                    customAmountText = participant.amount == 0 ? "" : String(participant.amount)
+                                }
+                                .onSubmit {
+                                    // End editing and ensure final parsing
+                                    isEditingAmount = false
+                                    if let value = Double(customAmountText) {
+                                        participant.amount = value
+                                        participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
+                                        onUpdate(participant)
+                                    }
+                                }
                         }
                     }
                 }
