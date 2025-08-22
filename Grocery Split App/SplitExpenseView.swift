@@ -50,6 +50,11 @@ struct EnhancedSplitExpenseView: View {
     @State private var alertMessage = ""
     @State private var showingItemSelection = false
     
+    // Method-specific state storage for preserving values when switching
+    @State private var savedPercentageValues: [UUID: Double] = [:]
+    @State private var savedCustomAmounts: [UUID: Double] = [:]
+    @State private var hasInitializedMethods: Set<SplitMethod> = []
+    
     // Missing @State variables for message functionality
     @State private var selectedMessageTemplate: MessageTemplate = .formal
     @State private var shareMessage: String = ""
@@ -206,11 +211,15 @@ struct EnhancedSplitExpenseView: View {
             } else {
                 LazyVStack(spacing: 8) {
                     ForEach(participants) { participant in
+                        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                        let isLastValidParticipant = validParticipants.count > 1 && participant.id == validParticipants.last?.id
+                        
                         ParticipantRow(
                             participant: participant,
                             splitMethod: splitMethod,
                             totalAmount: expense.totalCost,
                             isDefaultUser: participant.id == participants.first?.id,
+                            isLastParticipant: isLastValidParticipant,
                             allParticipants: participants,
                             onUpdate: { updatedParticipant in
                                 updateParticipant(updatedParticipant)
@@ -270,8 +279,7 @@ struct EnhancedSplitExpenseView: View {
     
     private func splitMethodButton(for method: SplitMethod) -> some View {
         Button(action: {
-            splitMethod = method
-            recalculateSplit()
+            switchToSplitMethod(method)
         }) {
             HStack {
                 Image(systemName: method.icon)
@@ -673,6 +681,89 @@ struct EnhancedSplitExpenseView: View {
     
     // MARK: - Helper Methods
     
+    private func switchToSplitMethod(_ newMethod: SplitMethod) {
+        // Save current method values before switching
+        saveCurrentMethodValues()
+        
+        let oldMethod = splitMethod
+        splitMethod = newMethod
+        
+        // Initialize with defaults if first time switching to this method
+        if !hasInitializedMethods.contains(newMethod) {
+            initializeMethodDefaults(for: newMethod)
+            hasInitializedMethods.insert(newMethod)
+        } else {
+            // Restore previously saved values for this method
+            restoreMethodValues(for: newMethod)
+        }
+        
+        recalculateSplit()
+    }
+    
+    private func saveCurrentMethodValues() {
+        switch splitMethod {
+        case .percentageSplit:
+            // Only save percentage values that were actually set by user (non-zero or explicitly set)
+            for participant in participants {
+                if participant.percentage > 0 || hasInitializedMethods.contains(.percentageSplit) {
+                    savedPercentageValues[participant.id] = participant.percentage
+                }
+            }
+        case .customSplit:
+            // Only save custom amounts that were actually set by user (non-zero or explicitly set)
+            for participant in participants {
+                if participant.amount > 0 || hasInitializedMethods.contains(.customSplit) {
+                    savedCustomAmounts[participant.id] = participant.amount
+                }
+            }
+        case .evenSplit:
+            // Even split doesn't need saving as it's always calculated
+            break
+        }
+    }
+    
+    private func initializeMethodDefaults(for method: SplitMethod) {
+        switch method {
+        case .percentageSplit:
+            // Set all participants to 0% by default
+            for i in participants.indices {
+                participants[i].percentage = 0.0
+                participants[i].amount = 0.0
+            }
+        case .customSplit:
+            // Set all participants to $0.00 by default
+            for i in participants.indices {
+                participants[i].amount = 0.0
+                participants[i].percentage = 0.0
+            }
+        case .evenSplit:
+            // Even split will be calculated in recalculateSplit
+            break
+        }
+    }
+    
+    private func restoreMethodValues(for method: SplitMethod) {
+        switch method {
+        case .percentageSplit:
+            for i in participants.indices {
+                if let savedPercentage = savedPercentageValues[participants[i].id] {
+                    participants[i].percentage = savedPercentage
+                    participants[i].amount = expense.totalCost * (savedPercentage / 100.0)
+                }
+            }
+        case .customSplit:
+            for i in participants.indices {
+                if let savedAmount = savedCustomAmounts[participants[i].id] {
+                    participants[i].amount = savedAmount
+                    participants[i].percentage = expense.totalCost > 0 ? (savedAmount / expense.totalCost) * 100.0 : 0
+                }
+            }
+        case .evenSplit:
+            // Even split will be calculated in recalculateSplit
+            break
+        }
+    }
+    
     private func sendPaymentRequests() {
         // Auto-save like pressing "Done" button - this will save all participants and mark default user as paid
         persistSplitAsRequests()
@@ -705,6 +796,13 @@ struct EnhancedSplitExpenseView: View {
                let method = SplitMethod.allCases.first(where: { $0.rawValue == savedMethod }) {
                 splitMethod = method
             }
+            
+            // Mark all methods as initialized and populate saved values
+            hasInitializedMethods = Set(SplitMethod.allCases)
+            for participant in participants {
+                savedPercentageValues[participant.id] = participant.percentage
+                savedCustomAmounts[participant.id] = participant.amount
+            }
         } else if participants.isEmpty {
             // Create default participant if none exist
             let profileName = UserDefaults.standard.string(forKey: "userName")?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -715,14 +813,35 @@ struct EnhancedSplitExpenseView: View {
             selectedParticipants = Set(participants.map { $0.id })
         }
         
+        // Mark evenSplit as initialized since it doesn't need special setup
+        hasInitializedMethods.insert(.evenSplit)
+        
         // Recalculate to ensure consistency
         recalculateSplit()
     }
     
     private func addParticipant() {
         let participantName = "New Person"
-        // Add participant with default name and recalculate to get proper amount
-        participants.append(SplitParticipant(name: participantName, amount: 0, percentage: 0, weight: 1.0))
+        let newParticipant = SplitParticipant(name: participantName, amount: 0, percentage: 0, weight: 1.0)
+        
+        // Add participant with default values based on current split method
+        participants.append(newParticipant)
+        
+        // Initialize the new participant with appropriate default values for current method
+        if let lastIndex = participants.indices.last {
+            switch splitMethod {
+            case .percentageSplit:
+                participants[lastIndex].percentage = 0.0
+                participants[lastIndex].amount = 0.0
+            case .customSplit:
+                participants[lastIndex].amount = 0.0
+                participants[lastIndex].percentage = 0.0
+            case .evenSplit:
+                // Will be calculated in recalculateSplit
+                break
+            }
+        }
+        
         recalculateSplit()
         // Notify that expense data may have changed for real-time dashboard updates
         NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
@@ -732,10 +851,8 @@ struct EnhancedSplitExpenseView: View {
         if let index = participants.firstIndex(where: { $0.id == updatedParticipant.id }) {
             participants[index] = updatedParticipant
             
-            // Handle auto-adjustment for percentage split
-            if splitMethod == .percentageSplit {
-                handlePercentageAutoAdjustment(changedParticipantId: updatedParticipant.id)
-            }
+            // Handle auto-adjustment for last participant in percentage and custom split
+            handleLastParticipantUpdate()
             
             // Recalculate when participant data changes to maintain consistency
             recalculateSplit()
@@ -744,28 +861,40 @@ struct EnhancedSplitExpenseView: View {
         }
     }
     
-    private func handlePercentageAutoAdjustment(changedParticipantId: UUID) {
+    private func handleLastParticipantUpdate() {
         let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard validParticipants.count > 1 else { return }
-        
-        // Find the last participant (not the one being changed)
-        guard let lastParticipant = validParticipants.last(where: { $0.id != changedParticipantId }),
+        guard validParticipants.count > 1, let lastParticipant = validParticipants.last,
               let lastIndex = participants.firstIndex(where: { $0.id == lastParticipant.id }) else { return }
         
-        // Calculate total percentage of all participants except the last one
-        let totalPercentageExceptLast = validParticipants
-            .filter { $0.id != lastParticipant.id }
-            .reduce(0) { $0 + $1.percentage }
-        
-        // Auto-adjust the last participant to make total = 100%
-        let remainingPercentage = max(0, 100.0 - totalPercentageExceptLast)
-        participants[lastIndex].percentage = remainingPercentage
-        participants[lastIndex].amount = expense.totalCost * (remainingPercentage / 100.0)
+        switch splitMethod {
+        case .percentageSplit:
+            // Auto-adjust the last participant's percentage to make total = 100%
+            let otherParticipantsTotal = validParticipants.filter { $0.id != lastParticipant.id }.reduce(0) { $0 + $1.percentage }
+            let remainingPercentage = max(0, 100.0 - otherParticipantsTotal)
+            participants[lastIndex].percentage = remainingPercentage
+            participants[lastIndex].amount = expense.totalCost * (remainingPercentage / 100.0)
+            
+        case .customSplit:
+            // Auto-adjust the last participant's amount to match the total expense
+            let otherParticipantsTotal = validParticipants.filter { $0.id != lastParticipant.id }.reduce(0) { $0 + $1.amount }
+            let remainingAmount = max(0, expense.totalCost - otherParticipantsTotal)
+            participants[lastIndex].amount = remainingAmount
+            participants[lastIndex].percentage = expense.totalCost > 0 ? (remainingAmount / expense.totalCost) * 100.0 : 0
+            
+        case .evenSplit:
+            // Even split doesn't need last participant adjustment
+            break
+        }
     }
     
     private func deleteParticipant(_ participant: SplitParticipant) {
         participants.removeAll { $0.id == participant.id }
         selectedParticipants.remove(participant.id)
+        
+        // Clean up saved method-specific values for this participant
+        savedPercentageValues.removeValue(forKey: participant.id)
+        savedCustomAmounts.removeValue(forKey: participant.id)
+        
         recalculateSplit()
         // Notify that expense data may have changed for real-time dashboard updates
         NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
@@ -1187,6 +1316,7 @@ struct ParticipantRow: View {
     let splitMethod: EnhancedSplitExpenseView.SplitMethod
     let totalAmount: Double
     let isDefaultUser: Bool
+    let isLastParticipant: Bool // New parameter for last participant locking
     let allParticipants: [SplitParticipant] // Add access to all participants for percentage calculation
     let onUpdate: (SplitParticipant) -> Void
     let onDelete: () -> Void
@@ -1238,18 +1368,39 @@ struct ParticipantRow: View {
                 HStack {
                     Text("Amount:")
                     Spacer()
-                    HStack {
-                        Text("$")
-                            .foregroundColor(.secondary)
-                        TextField("0.00", value: $participant.amount, format: .number.precision(.fractionLength(2)))
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .keyboardType(.decimalPad)
-                            .frame(width: 100) // Increased width for larger amounts
-                            .onChange(of: participant.amount) { _, _ in
-                                // Update percentage based on amount
-                                participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
-                                onUpdate(participant)
-                            }
+                    if isLastParticipant {
+                        // Show remaining amount for locked last participant
+                        let otherParticipantsTotal = allParticipants.filter { $0.id != participant.id && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.reduce(0) { $0 + $1.amount }
+                        let remainingAmount = max(0, totalAmount - otherParticipantsTotal)
+                        
+                        HStack {
+                            Text("$")
+                                .foregroundColor(.secondary)
+                            Text("\(remainingAmount, specifier: "%.2f")")
+                                .font(.body)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color(.systemGray5))
+                                .cornerRadius(8)
+                            Text("(remaining)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        HStack {
+                            Text("$")
+                                .foregroundColor(.secondary)
+                            TextField("0.00", value: $participant.amount, format: .number.precision(.fractionLength(2)))
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .keyboardType(.decimalPad)
+                                .frame(width: 100) // Increased width for larger amounts
+                                .onChange(of: participant.amount) { _, _ in
+                                    // Update percentage based on amount
+                                    participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
+                                    onUpdate(participant)
+                                }
+                        }
                     }
                 }
                 
@@ -1264,28 +1415,47 @@ struct ParticipantRow: View {
                 HStack {
                     Text("Percentage:")
                     Spacer()
-                    TextField("", text: Binding(
-                        get: { participant.percentage == 0 ? "" : String(Int(participant.percentage)) },
-                        set: { newValue in
-                            // Allow user to type freely, but cap at 100%
-                            let filtered = newValue.filter { "0123456789".contains($0) }
-                            if let val = Double(filtered) {
-                                // Cap at 100% as per requirements
-                                participant.percentage = min(max(val, 0), 100)
-                            } else if filtered.isEmpty {
-                                participant.percentage = 0
+                    if isLastParticipant {
+                        // Show remaining percentage for locked last participant
+                        let otherParticipantsTotal = allParticipants.filter { $0.id != participant.id && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.reduce(0) { $0 + $1.percentage }
+                        let remainingPercentage = max(0, 100.0 - otherParticipantsTotal)
+                        
+                        HStack {
+                            Text("\(Int(remainingPercentage))")
+                                .font(.body)
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color(.systemGray5))
+                                .cornerRadius(8)
+                            Text("% (remaining)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        TextField("", text: Binding(
+                            get: { participant.percentage == 0 ? "" : String(Int(participant.percentage)) },
+                            set: { newValue in
+                                // Allow user to type freely, but cap at 100%
+                                let filtered = newValue.filter { "0123456789".contains($0) }
+                                if let val = Double(filtered) {
+                                    // Cap at 100% as per requirements
+                                    participant.percentage = min(max(val, 0), 100)
+                                } else if filtered.isEmpty {
+                                    participant.percentage = 0
+                                }
+                                participant.amount = totalAmount * (participant.percentage / 100.0)
+                                onUpdate(participant)
                             }
-                            participant.amount = totalAmount * (participant.percentage / 100.0)
-                            onUpdate(participant)
-                        }
-                    ))
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .keyboardType(.numberPad)
-                        .frame(width: 80)
-                        .onTapGesture {
-                            // Keep empty on first tap for quick typing
-                        }
-                    Text("%")
+                        ))
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .keyboardType(.numberPad)
+                            .frame(width: 80)
+                            .onTapGesture {
+                                // Keep empty on first tap for quick typing
+                            }
+                        Text("%")
+                    }
                 }
                 
                 // Show remaining percentage for percentage split
