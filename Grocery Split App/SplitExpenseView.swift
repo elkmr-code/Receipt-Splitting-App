@@ -211,6 +211,7 @@ struct EnhancedSplitExpenseView: View {
                             splitMethod: splitMethod,
                             totalAmount: expense.totalCost,
                             isDefaultUser: participant.id == participants.first?.id,
+                            allParticipants: participants,
                             onUpdate: { updatedParticipant in
                                 updateParticipant(updatedParticipant)
                             },
@@ -363,7 +364,33 @@ struct EnhancedSplitExpenseView: View {
             let totalSplit = validParticipants.reduce(0) { $0 + $1.amount }
             let difference = expense.totalCost - totalSplit
             
-            if abs(difference) > 0.01 {
+            if splitMethod == .customSplit && totalSplit > expense.totalCost && abs(difference) > 0.01 {
+                // Only show error for custom split when total exceeds expense amount
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("⚠️ Custom amounts exceed expense total")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        Spacer()
+                        Text("Over by: $\(abs(difference), specifier: "%.2f")")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    .padding(.horizontal)
+                    
+                    Button("Show Error Alert") {
+                        alertMessage = "The total custom amounts ($\(totalSplit, specifier: "%.2f")) exceed the expense total ($\(expense.totalCost, specifier: "%.2f")) by $\(abs(difference), specifier: "%.2f"). Please adjust the amounts."
+                        showingAlert = true
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
+                }
+            } else if abs(difference) > 0.01 && splitMethod != .customSplit {
+                // For non-custom splits, show auto-adjust option without error popup
                 HStack {
                     Text("⚠️ Split total doesn't match expense total")
                         .font(.caption)
@@ -704,11 +731,36 @@ struct EnhancedSplitExpenseView: View {
     private func updateParticipant(_ updatedParticipant: SplitParticipant) {
         if let index = participants.firstIndex(where: { $0.id == updatedParticipant.id }) {
             participants[index] = updatedParticipant
+            
+            // Handle auto-adjustment for percentage split
+            if splitMethod == .percentageSplit {
+                handlePercentageAutoAdjustment(changedParticipantId: updatedParticipant.id)
+            }
+            
             // Recalculate when participant data changes to maintain consistency
             recalculateSplit()
             // Notify that expense data may have changed for real-time dashboard updates
             NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
         }
+    }
+    
+    private func handlePercentageAutoAdjustment(changedParticipantId: UUID) {
+        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard validParticipants.count > 1 else { return }
+        
+        // Find the last participant (not the one being changed)
+        guard let lastParticipant = validParticipants.last(where: { $0.id != changedParticipantId }),
+              let lastIndex = participants.firstIndex(where: { $0.id == lastParticipant.id }) else { return }
+        
+        // Calculate total percentage of all participants except the last one
+        let totalPercentageExceptLast = validParticipants
+            .filter { $0.id != lastParticipant.id }
+            .reduce(0) { $0 + $1.percentage }
+        
+        // Auto-adjust the last participant to make total = 100%
+        let remainingPercentage = max(0, 100.0 - totalPercentageExceptLast)
+        participants[lastIndex].percentage = remainingPercentage
+        participants[lastIndex].amount = expense.totalCost * (remainingPercentage / 100.0)
     }
     
     private func deleteParticipant(_ participant: SplitParticipant) {
@@ -1135,6 +1187,7 @@ struct ParticipantRow: View {
     let splitMethod: EnhancedSplitExpenseView.SplitMethod
     let totalAmount: Double
     let isDefaultUser: Bool
+    let allParticipants: [SplitParticipant] // Add access to all participants for percentage calculation
     let onUpdate: (SplitParticipant) -> Void
     let onDelete: () -> Void
     
@@ -1181,53 +1234,139 @@ struct ParticipantRow: View {
     private var inputFieldsForSplitMethod: some View {
         switch splitMethod {
         case .customSplit:
-            HStack {
-                Text("Amount:")
-                Spacer()
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("$")
-                        .foregroundColor(.secondary)
-                    TextField("0.00", value: $participant.amount, format: .number.precision(.fractionLength(2)))
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .keyboardType(.decimalPad)
-                        .frame(width: 80)
-                        .onChange(of: participant.amount) { _, _ in
-                            onUpdate(participant)
-                        }
+                    Text("Amount:")
+                    Spacer()
+                    HStack {
+                        Text("$")
+                            .foregroundColor(.secondary)
+                        TextField("0.00", value: $participant.amount, format: .number.precision(.fractionLength(2)))
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .keyboardType(.decimalPad)
+                            .frame(width: 100) // Increased width for larger amounts
+                            .onChange(of: participant.amount) { _, _ in
+                                // Update percentage based on amount
+                                participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
+                                onUpdate(participant)
+                            }
+                    }
+                }
+                
+                // Show real-time total validation for custom split
+                if splitMethod == .customSplit {
+                    customSplitValidationView
                 }
             }
             
         case .percentageSplit:
-            HStack {
-                Text("Percentage:")
-                Spacer()
-                TextField("", text: Binding(
-                    get: { participant.percentage == 0 ? "" : String(Int(participant.percentage)) },
-                    set: { newValue in
-                        // Digits only, interpret as whole percent (no decimals)
-                        let filtered = newValue.filter { "0123456789".contains($0) }
-                        if let val = Double(filtered) {
-                            participant.percentage = min(max(val, 0), 100)
-                        } else if filtered.isEmpty {
-                            participant.percentage = 0
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Percentage:")
+                    Spacer()
+                    TextField("", text: Binding(
+                        get: { participant.percentage == 0 ? "" : String(Int(participant.percentage)) },
+                        set: { newValue in
+                            // Allow user to type freely, but cap at 100%
+                            let filtered = newValue.filter { "0123456789".contains($0) }
+                            if let val = Double(filtered) {
+                                // Cap at 100% as per requirements
+                                participant.percentage = min(max(val, 0), 100)
+                            } else if filtered.isEmpty {
+                                participant.percentage = 0
+                            }
+                            participant.amount = totalAmount * (participant.percentage / 100.0)
+                            onUpdate(participant)
                         }
-                        participant.amount = totalAmount * (participant.percentage / 100.0)
-                        onUpdate(participant)
-                    }
-                ))
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .keyboardType(.numberPad)
-                    .frame(width: 80)
-                    .onTapGesture {
-                        // Keep empty on first tap for quick typing
-                    }
-                Text("%")
+                    ))
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .keyboardType(.numberPad)
+                        .frame(width: 80)
+                        .onTapGesture {
+                            // Keep empty on first tap for quick typing
+                        }
+                    Text("%")
+                }
+                
+                // Show remaining percentage for percentage split
+                if splitMethod == .percentageSplit {
+                    percentageRemainingView
+                }
             }
             
         default:
             // Remove amount display from main participants section
             // Amounts will only be shown in the selection section below
             EmptyView()
+        }
+    }
+    
+    // MARK: - Helper Views for Validation
+    
+    @ViewBuilder
+    private var customSplitValidationView: some View {
+        let currentTotal = allParticipants.reduce(0) { $0 + $1.amount }
+        let difference = currentTotal - totalAmount
+        
+        if abs(difference) > 0.01 {
+            HStack {
+                if difference > 0 {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                        .font(.caption)
+                    Text("Total exceeds expense by $\(abs(difference), specifier: "%.2f")")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                } else {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(.orange)
+                        .font(.caption)
+                    Text("$\(abs(difference), specifier: "%.2f") remaining")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+            }
+        } else {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.caption)
+                Text("Total matches expense")
+                    .font(.caption)
+                    .foregroundColor(.green)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var percentageRemainingView: some View {
+        let validParticipants = allParticipants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let totalUsedPercentage = validParticipants.reduce(0) { $0 + $1.percentage }
+        let remainingPercentage = max(0, 100.0 - totalUsedPercentage)
+        
+        HStack {
+            if remainingPercentage > 0 {
+                Image(systemName: "info.circle.fill")
+                    .foregroundColor(.blue)
+                    .font(.caption)
+                Text("\(Int(remainingPercentage))% remaining")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+            } else if totalUsedPercentage > 100 {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.caption)
+                Text("\(Int(totalUsedPercentage - 100))% over 100%")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            } else {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.caption)
+                Text("100% allocated")
+                    .font(.caption)
+                    .foregroundColor(.green)
+            }
         }
     }
 }
