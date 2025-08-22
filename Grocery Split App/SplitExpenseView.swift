@@ -1384,37 +1384,74 @@ struct ParticipantRow: View {
                     Text("Amount:")
                     Spacer()
                     if isLastParticipant {
-                        // Show remaining amount for locked last participant
+                        // Show remaining amount for locked last participant with consistent styling
                         let otherParticipantsTotal = allParticipants.filter { $0.id != participant.id && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.reduce(0) { $0 + $1.amount }
                         let remainingAmount = max(0, totalAmount - otherParticipantsTotal)
                         
-                        HStack {
-                            Text("$")
-                                .foregroundColor(.secondary)
-                            Text("\(String(format: "%.2f", remainingAmount))")
-                                .font(.body)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color(.systemGray5))
-                                .cornerRadius(8)
-                            Text("(remaining)")
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("$")
+                                    .foregroundColor(.secondary)
+                                Text("\(String(format: "%.2f", remainingAmount))")
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                    .frame(width: 100, alignment: .leading) // Same width as regular input
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(Color(.systemGray5))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color(.systemGray3), lineWidth: 1)
+                                    )
+                            }
+                            
+                            // Descriptive text under the locked box
+                            Text("Remaining amount (auto-calculated)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .padding(.leading, 8)
                         }
                     } else {
                         HStack {
                             Text("$")
                                 .foregroundColor(.secondary)
-                            TextField("0.00", value: $participant.amount, format: .number.precision(.fractionLength(2)))
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .keyboardType(.decimalPad)
-                                .frame(width: 100) // Increased width for larger amounts
-                                .onChange(of: participant.amount) { _, _ in
+                            TextField("0.00", text: Binding(
+                                get: { participant.amount == 0 ? "" : String(format: "%.2f", participant.amount) },
+                                set: { newValue in
+                                    // Allow free typing of any numeric input without restrictions
+                                    let cleanValue = newValue.replacingOccurrences(of: "$", with: "")
+                                        .replacingOccurrences(of: ",", with: "")
+                                    
+                                    // Allow digits, one decimal point, and maintain user's typing freedom
+                                    let filtered = cleanValue.filter { "0123456789.".contains($0) }
+                                    
+                                    // Allow multiple decimal points during typing, but parse correctly
+                                    let components = filtered.components(separatedBy: ".")
+                                    let validInput: String
+                                    if components.count > 2 {
+                                        // If more than one decimal point, keep only the first one
+                                        validInput = components[0] + "." + components.dropFirst().joined()
+                                    } else {
+                                        validInput = filtered
+                                    }
+                                    
+                                    // Parse the value, allowing any amount (no restrictions)
+                                    if let value = Double(validInput) {
+                                        participant.amount = value
+                                    } else if validInput.isEmpty {
+                                        participant.amount = 0
+                                    }
+                                    // If parsing fails, keep the current amount (don't change it)
+                                    
                                     // Update percentage based on amount
                                     participant.percentage = totalAmount > 0 ? (participant.amount / totalAmount) * 100.0 : 0
                                     onUpdate(participant)
                                 }
+                            ))
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .keyboardType(.decimalPad)
+                                .frame(width: 100) // Increased width for larger amounts
                         }
                     }
                 }
@@ -1431,21 +1468,32 @@ struct ParticipantRow: View {
                     Text("Percentage:")
                     Spacer()
                     if isLastParticipant {
-                        // Show remaining percentage for locked last participant
+                        // Show remaining percentage for locked last participant with consistent styling
                         let otherParticipantsTotal = allParticipants.filter { $0.id != participant.id && !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.reduce(0) { $0 + $1.percentage }
                         let remainingPercentage = max(0, 100.0 - otherParticipantsTotal)
                         
-                        HStack {
-                            Text("\(Int(remainingPercentage))")
-                                .font(.body)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(Color(.systemGray5))
-                                .cornerRadius(8)
-                            Text("% (remaining)")
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("\(Int(remainingPercentage))")
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                    .frame(width: 80, alignment: .leading) // Same width as regular input
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(Color(.systemGray5))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color(.systemGray3), lineWidth: 1)
+                                    )
+                                Text("%")
+                            }
+                            
+                            // Descriptive text under the locked box
+                            Text("Remaining percentage (auto-calculated)")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .padding(.leading, 8)
                         }
                     } else {
                         TextField("", text: Binding(
