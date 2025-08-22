@@ -182,7 +182,7 @@ struct EnhancedSplitExpenseView: View {
                 Text("Total Amount:")
                     .font(.headline)
                 Spacer()
-                Text("$\(expense.totalCost, specifier: "%.2f")")
+                Text("$\(String(format: "%.2f", expense.totalCost))")
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.green)
@@ -354,7 +354,7 @@ struct EnhancedSplitExpenseView: View {
                 .font(.body)
                 .foregroundColor(isValidParticipant ? .primary : .secondary)
             Spacer()
-            Text("$\(participant.amount, specifier: "%.2f")")
+            Text("$\(String(format: "%.2f", participant.amount))")
                 .font(.body)
                 .fontWeight(.semibold)
                 .foregroundColor(shouldShowAmount ? (isValidParticipant ? .green : .gray.opacity(0.7)) : .gray)
@@ -380,14 +380,14 @@ struct EnhancedSplitExpenseView: View {
                             .font(.caption)
                             .foregroundColor(.red)
                         Spacer()
-                        Text("Over by: $\(abs(difference), specifier: "%.2f")")
+                        Text("Over by: $\(String(format: "%.2f", abs(difference)))")
                             .font(.caption)
                             .foregroundColor(.red)
                     }
                     .padding(.horizontal)
                     
                     Button("Show Error Alert") {
-                        alertMessage = "The total custom amounts ($\(totalSplit, specifier: "%.2f")) exceed the expense total ($\(expense.totalCost, specifier: "%.2f")) by $\(abs(difference), specifier: "%.2f"). Please adjust the amounts."
+                        alertMessage = "The total custom amounts ($\(String(format: "%.2f", totalSplit))) exceed the expense total ($\(String(format: "%.2f", expense.totalCost))) by $\(String(format: "%.2f", abs(difference))). Please adjust the amounts."
                         showingAlert = true
                     }
                     .font(.caption)
@@ -404,7 +404,7 @@ struct EnhancedSplitExpenseView: View {
                         .font(.caption)
                         .foregroundColor(.orange)
                     Spacer()
-                    Text("Difference: $\(difference, specifier: "%.2f")")
+                    Text("Difference: $\(String(format: "%.2f", difference))")
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
@@ -626,7 +626,7 @@ struct EnhancedSplitExpenseView: View {
                 
                 Spacer()
                 
-                Text("$\(participant.amount, specifier: "%.2f")")
+                Text("$\(String(format: "%.2f", participant.amount))")
                     .foregroundColor(.green)
                     .fontWeight(.medium)
             }
@@ -1376,7 +1376,7 @@ struct ParticipantRow: View {
                         HStack {
                             Text("$")
                                 .foregroundColor(.secondary)
-                            Text("\(remainingAmount, specifier: "%.2f")")
+                            Text("\(String(format: "%.2f", remainingAmount))")
                                 .font(.body)
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 12)
@@ -1484,14 +1484,14 @@ struct ParticipantRow: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.red)
                         .font(.caption)
-                    Text("Total exceeds expense by $\(abs(difference), specifier: "%.2f")")
+                    Text("Total exceeds expense by $\(String(format: "%.2f", abs(difference)))")
                         .font(.caption)
                         .foregroundColor(.red)
                 } else {
                     Image(systemName: "info.circle.fill")
                         .foregroundColor(.orange)
                         .font(.caption)
-                    Text("$\(abs(difference), specifier: "%.2f") remaining")
+                    Text("$\(String(format: "%.2f", abs(difference))) remaining")
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
