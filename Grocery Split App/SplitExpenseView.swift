@@ -182,7 +182,7 @@ struct EnhancedSplitExpenseView: View {
                 Text("Total Amount:")
                     .font(.headline)
                 Spacer()
-                Text("$\(expense.totalCost, specifier: "%.2f")")
+                Text("$\(String(format: "%.2f", expense.totalCost))")
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.green)
@@ -354,7 +354,7 @@ struct EnhancedSplitExpenseView: View {
                 .font(.body)
                 .foregroundColor(isValidParticipant ? .primary : .secondary)
             Spacer()
-            Text("$\(participant.amount, specifier: "%.2f")")
+            Text("$\(String(format: "%.2f", participant.amount))")
                 .font(.body)
                 .fontWeight(.semibold)
                 .foregroundColor(shouldShowAmount ? (isValidParticipant ? .green : .gray.opacity(0.7)) : .gray)
@@ -380,14 +380,14 @@ struct EnhancedSplitExpenseView: View {
                             .font(.caption)
                             .foregroundColor(.red)
                         Spacer()
-                        Text("Over by: $\(abs(difference), specifier: "%.2f")")
+                        Text("Over by: $\(String(format: "%.2f", abs(difference)))")
                             .font(.caption)
                             .foregroundColor(.red)
                     }
                     .padding(.horizontal)
                     
                     Button("Show Error Alert") {
-                        alertMessage = "The total custom amounts ($\(totalSplit, specifier: "%.2f")) exceed the expense total ($\(expense.totalCost, specifier: "%.2f")) by $\(abs(difference), specifier: "%.2f"). Please adjust the amounts."
+                        alertMessage = "The total custom amounts ($\(String(format: "%.2f", totalSplit))) exceed the expense total ($\(String(format: "%.2f", expense.totalCost))) by $\(String(format: "%.2f", abs(difference))). Please adjust the amounts."
                         showingAlert = true
                     }
                     .font(.caption)
@@ -404,7 +404,7 @@ struct EnhancedSplitExpenseView: View {
                         .font(.caption)
                         .foregroundColor(.orange)
                     Spacer()
-                    Text("Difference: $\(difference, specifier: "%.2f")")
+                    Text("Difference: $\(String(format: "%.2f", difference))")
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
@@ -626,7 +626,7 @@ struct EnhancedSplitExpenseView: View {
                 
                 Spacer()
                 
-                Text("$\(participant.amount, specifier: "%.2f")")
+                Text("$\(String(format: "%.2f", participant.amount))")
                     .foregroundColor(.green)
                     .fontWeight(.medium)
             }
@@ -745,6 +745,11 @@ struct EnhancedSplitExpenseView: View {
     private func restoreMethodValues(for method: SplitMethod) {
         switch method {
         case .percentageSplit:
+            // First clear all values, then restore saved percentages
+            for i in participants.indices {
+                participants[i].percentage = 0.0
+                participants[i].amount = 0.0
+            }
             for i in participants.indices {
                 if let savedPercentage = savedPercentageValues[participants[i].id] {
                     participants[i].percentage = savedPercentage
@@ -752,6 +757,11 @@ struct EnhancedSplitExpenseView: View {
                 }
             }
         case .customSplit:
+            // First clear all values, then restore saved amounts
+            for i in participants.indices {
+                participants[i].amount = 0.0
+                participants[i].percentage = 0.0
+            }
             for i in participants.indices {
                 if let savedAmount = savedCustomAmounts[participants[i].id] {
                     participants[i].amount = savedAmount
@@ -795,13 +805,20 @@ struct EnhancedSplitExpenseView: View {
             if let savedMethod = expense.splitMethod,
                let method = SplitMethod.allCases.first(where: { $0.rawValue == savedMethod }) {
                 splitMethod = method
-            }
-            
-            // Mark all methods as initialized and populate saved values
-            hasInitializedMethods = Set(SplitMethod.allCases)
-            for participant in participants {
-                savedPercentageValues[participant.id] = participant.percentage
-                savedCustomAmounts[participant.id] = participant.amount
+                
+                // Only mark the saved method as initialized and populate its specific values
+                hasInitializedMethods.insert(method)
+                for participant in participants {
+                    switch method {
+                    case .percentageSplit:
+                        savedPercentageValues[participant.id] = participant.percentage
+                    case .customSplit:
+                        savedCustomAmounts[participant.id] = participant.amount
+                    case .evenSplit:
+                        // Even split doesn't need saved values as it's calculated dynamically
+                        break
+                    }
+                }
             }
         } else if participants.isEmpty {
             // Create default participant if none exist
@@ -1017,10 +1034,8 @@ struct EnhancedSplitExpenseView: View {
             
         case .percentageSplit:
             let totalPercentage = participants.reduce(0) { $0 + $1.percentage }
-            if totalPercentage > 0 {
-                for i in participants.indices {
-                    participants[i].amount = expense.totalCost * (participants[i].percentage / 100.0)
-                }
+            for i in participants.indices {
+                participants[i].amount = expense.totalCost * (participants[i].percentage / 100.0)
             }
             
         }
@@ -1376,7 +1391,7 @@ struct ParticipantRow: View {
                         HStack {
                             Text("$")
                                 .foregroundColor(.secondary)
-                            Text("\(remainingAmount, specifier: "%.2f")")
+                            Text("\(String(format: "%.2f", remainingAmount))")
                                 .font(.body)
                                 .fontWeight(.medium)
                                 .padding(.horizontal, 12)
@@ -1484,14 +1499,14 @@ struct ParticipantRow: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.red)
                         .font(.caption)
-                    Text("Total exceeds expense by $\(abs(difference), specifier: "%.2f")")
+                    Text("Total exceeds expense by $\(String(format: "%.2f", abs(difference)))")
                         .font(.caption)
                         .foregroundColor(.red)
                 } else {
                     Image(systemName: "info.circle.fill")
                         .foregroundColor(.orange)
                         .font(.caption)
-                    Text("$\(abs(difference), specifier: "%.2f") remaining")
+                    Text("$\(String(format: "%.2f", abs(difference))) remaining")
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
