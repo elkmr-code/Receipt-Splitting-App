@@ -703,12 +703,18 @@ struct EnhancedSplitExpenseView: View {
     private func saveCurrentMethodValues() {
         switch splitMethod {
         case .percentageSplit:
+            // Only save percentage values that were actually set by user (non-zero or explicitly set)
             for participant in participants {
-                savedPercentageValues[participant.id] = participant.percentage
+                if participant.percentage > 0 || hasInitializedMethods.contains(.percentageSplit) {
+                    savedPercentageValues[participant.id] = participant.percentage
+                }
             }
         case .customSplit:
+            // Only save custom amounts that were actually set by user (non-zero or explicitly set)
             for participant in participants {
-                savedCustomAmounts[participant.id] = participant.amount
+                if participant.amount > 0 || hasInitializedMethods.contains(.customSplit) {
+                    savedCustomAmounts[participant.id] = participant.amount
+                }
             }
         case .evenSplit:
             // Even split doesn't need saving as it's always calculated
@@ -881,28 +887,14 @@ struct EnhancedSplitExpenseView: View {
         }
     }
     
-    private func handlePercentageAutoAdjustment(changedParticipantId: UUID) {
-        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        guard validParticipants.count > 1 else { return }
-        
-        // Find the last participant (not the one being changed)
-        guard let lastParticipant = validParticipants.last(where: { $0.id != changedParticipantId }),
-              let lastIndex = participants.firstIndex(where: { $0.id == lastParticipant.id }) else { return }
-        
-        // Calculate total percentage of all participants except the last one
-        let totalPercentageExceptLast = validParticipants
-            .filter { $0.id != lastParticipant.id }
-            .reduce(0) { $0 + $1.percentage }
-        
-        // Auto-adjust the last participant to make total = 100%
-        let remainingPercentage = max(0, 100.0 - totalPercentageExceptLast)
-        participants[lastIndex].percentage = remainingPercentage
-        participants[lastIndex].amount = expense.totalCost * (remainingPercentage / 100.0)
-    }
-    
     private func deleteParticipant(_ participant: SplitParticipant) {
         participants.removeAll { $0.id == participant.id }
         selectedParticipants.remove(participant.id)
+        
+        // Clean up saved method-specific values for this participant
+        savedPercentageValues.removeValue(forKey: participant.id)
+        savedCustomAmounts.removeValue(forKey: participant.id)
+        
         recalculateSplit()
         // Notify that expense data may have changed for real-time dashboard updates
         NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
