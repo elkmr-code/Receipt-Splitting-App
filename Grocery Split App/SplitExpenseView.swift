@@ -112,8 +112,15 @@ struct EnhancedSplitExpenseView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(
                 leading: Button("Cancel") { dismiss() },
-                trailing: Button("Done") { persistSplitAsRequests(); dismiss() }
-                    .disabled(participants.isEmpty)
+                trailing: Button("Done") { 
+                    if validateSplitAmounts() {
+                        persistSplitAsRequests(); 
+                        dismiss() 
+                    } else {
+                        showSplitValidationError()
+                    }
+                }
+                .disabled(participants.isEmpty || !validateSplitAmounts())
             )
         }
         .onAppear {
@@ -465,10 +472,10 @@ struct EnhancedSplitExpenseView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color.blue)
+                .background(validateSplitAmounts() ? Color.blue : Color.gray)
                 .cornerRadius(12)
             }
-            .disabled(shareMessage.isEmpty)
+            .disabled(shareMessage.isEmpty || !validateSplitAmounts())
         }
     }
     
@@ -775,6 +782,12 @@ struct EnhancedSplitExpenseView: View {
     }
     
     private func sendPaymentRequests() {
+        // Validate split amounts before proceeding
+        if !validateSplitAmounts() {
+            showSplitValidationError()
+            return
+        }
+        
         // Auto-save like pressing "Done" button - this will save all participants and mark default user as paid
         persistSplitAsRequests()
         
@@ -1311,6 +1324,26 @@ struct EnhancedSplitExpenseView: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Validation Functions
+    
+    private func validateSplitAmounts() -> Bool {
+        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let totalSplit = validParticipants.reduce(0) { $0 + $1.amount }
+        let difference = totalSplit - expense.totalCost
+        
+        // Allow small rounding differences (less than 1 cent)
+        return abs(difference) <= 0.01
+    }
+    
+    private func showSplitValidationError() {
+        let validParticipants = participants.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let totalSplit = validParticipants.reduce(0) { $0 + $1.amount }
+        let difference = totalSplit - expense.totalCost
+        
+        alertMessage = "The total custom amounts ($\(String(format: "%.2f", totalSplit))) exceed the expense total ($\(String(format: "%.2f", expense.totalCost))) by $\(String(format: "%.2f", abs(difference))). Please adjust the amounts."
+        showingAlert = true
     }
 
 

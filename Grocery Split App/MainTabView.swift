@@ -752,12 +752,29 @@ struct SettingsView: View {
     @AppStorage("defaultCurrency") private var defaultCurrency = "USD"
     @AppStorage("enableNotifications") private var enableNotifications = true
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @State private var showingUsernameUpdateAlert = false
+    @State private var showingSuccessAlert = false
+    @State private var showingInvalidUsernameAlert = false
+    @State private var oldUsername = ""
+    @State private var newUsername = ""
+    @State private var updateResults = ""
+    @State private var invalidUsernameMessage = ""
     
     var body: some View {
         NavigationStack {
             Form {
                 Section("Profile") {
                     TextField("Name", text: $userName)
+                        .onSubmit {
+                            validateAndUpdateUsername()
+                        }
+                        .onChange(of: userName) { oldValue, newValue in
+                            // Store the old username when it first changes
+                            if oldUsername.isEmpty && !oldValue.isEmpty && oldValue != newValue {
+                                oldUsername = oldValue
+                            }
+                        }
                     TextField("Email", text: $userEmail)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
@@ -791,10 +808,164 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button("Done") {
-                        dismiss()
+                        // Check if username changed before dismissing
+                        if !oldUsername.isEmpty && oldUsername != userName {
+                            validateAndUpdateUsername()
+                        } else {
+                            dismiss()
+                        }
                     }
                 }
             }
+            .alert("Update Username", isPresented: $showingUsernameUpdateAlert) {
+                Button("Update All Records") {
+                    updateAllRecordsWithNewUsername()
+                }
+                Button("Cancel", role: .cancel) {
+                    // Revert the username change to prevent chart bugs
+                    userName = oldUsername
+                }
+            } message: {
+                Text("Your username has changed from '\(oldUsername)' to '\(newUsername)'. To maintain data integrity and ensure all charts work properly, all your previous expenses and split requests will be updated with your new username.")
+            }
+            .alert("Update Complete", isPresented: $showingSuccessAlert) {
+                Button("OK") { }
+            } message: {
+                Text(updateResults)
+            }
+            .alert("Invalid Username", isPresented: $showingInvalidUsernameAlert) {
+                Button("OK") { }
+            } message: {
+                Text(invalidUsernameMessage)
+            }
+            .onAppear {
+                // Store the current username when settings view appears
+                if oldUsername.isEmpty {
+                    oldUsername = userName
+                }
+            }
+        }
+    }
+    
+    private func validateAndUpdateUsername() {
+        let trimmedUsername = userName.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Check for empty username
+        if trimmedUsername.isEmpty {
+            invalidUsernameMessage = "Username cannot be empty. Please enter a valid name."
+            showingInvalidUsernameAlert = true
+            return
+        }
+        
+        // Check for only whitespace
+        if trimmedUsername.isEmpty {
+            invalidUsernameMessage = "Username cannot contain only spaces. Please enter a valid name."
+            showingInvalidUsernameAlert = true
+            return
+        }
+        
+        // Check for special characters that might cause issues
+        let invalidCharacters = CharacterSet(charactersIn: "!@#$%^&*()_+-=[]{}|;':\",./<>?")
+        if trimmedUsername.rangeOfCharacter(from: invalidCharacters) != nil {
+            invalidUsernameMessage = "Username contains invalid characters. Please use only letters, numbers, and spaces."
+            showingInvalidUsernameAlert = true
+            return
+        }
+        
+        // Check if username is too long
+        if trimmedUsername.count > 50 {
+            invalidUsernameMessage = "Username is too long. Please use 50 characters or less."
+            showingInvalidUsernameAlert = true
+            return
+        }
+        
+        // Normalize the username (trim and capitalize first letter)
+        let normalizedUsername = trimmedUsername.prefix(1).uppercased() + trimmedUsername.dropFirst().lowercased()
+        
+        // Update the userName with normalized version
+        userName = normalizedUsername
+        
+        // Check if username actually changed
+        if !oldUsername.isEmpty && oldUsername != normalizedUsername {
+            newUsername = normalizedUsername
+            showingUsernameUpdateAlert = true
+        }
+    }
+    
+    private func updateAllRecordsWithNewUsername() {
+        guard !oldUsername.isEmpty && !newUsername.isEmpty else { return }
+        
+        // Normalize usernames for comparison
+        let normalizedOldUsername = oldUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedNewUsername = newUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        print("DEBUG: Updating from '\(normalizedOldUsername)' to '\(normalizedNewUsername)'")
+        
+        do {
+            // Fetch all records and filter in memory since SwiftData predicates are limited
+            let allExpensesDescriptor = FetchDescriptor<Expense>()
+            let allSplitRequestsDescriptor = FetchDescriptor<SplitRequest>()
+            let allParticipantsDescriptor = FetchDescriptor<SplitParticipantData>()
+            
+            let allExpenses = try modelContext.fetch(allExpensesDescriptor)
+            let allSplitRequests = try modelContext.fetch(allSplitRequestsDescriptor)
+            let allParticipants = try modelContext.fetch(allParticipantsDescriptor)
+            
+            print("DEBUG: Total expenses in database: \(allExpenses.count)")
+            for expense in allExpenses {
+                print("DEBUG: Expense '\(expense.name)' has payerName: '\(expense.payerName)'")
+            }
+            
+            // Filter expenses that match the old username (case-insensitive)
+            let expensesToUpdate = allExpenses.filter { expense in
+                expense.payerName.lowercased() == normalizedOldUsername.lowercased()
+            }
+            print("DEBUG: Found \(expensesToUpdate.count) expenses to update")
+            
+            // Update all expenses with the new username
+            for expense in expensesToUpdate {
+                print("DEBUG: Updating expense '\(expense.name)' from '\(expense.payerName)' to '\(normalizedNewUsername)'")
+                expense.payerName = normalizedNewUsername
+            }
+            
+            // Filter split requests that match the old username (case-insensitive)
+            let splitRequestsToUpdate = allSplitRequests.filter { request in
+                request.participantName.lowercased() == normalizedOldUsername.lowercased()
+            }
+            print("DEBUG: Found \(splitRequestsToUpdate.count) split requests to update")
+            
+            // Update all split requests with the new username
+            for request in splitRequestsToUpdate {
+                print("DEBUG: Updating split request for '\(request.participantName)' to '\(normalizedNewUsername)'")
+                request.participantName = normalizedNewUsername
+            }
+            
+            // Filter participant data that matches the old username (case-insensitive)
+            let participantsToUpdate = allParticipants.filter { participant in
+                participant.name.lowercased() == normalizedOldUsername.lowercased()
+            }
+            print("DEBUG: Found \(participantsToUpdate.count) participant records to update")
+            
+            // Update all split participant data with the new username
+            for participant in participantsToUpdate {
+                print("DEBUG: Updating participant '\(participant.name)' to '\(normalizedNewUsername)'")
+                participant.name = normalizedNewUsername
+            }
+            
+            // Save all changes
+            try modelContext.save()
+            
+            // Post notifications to refresh UI
+            NotificationCenter.default.post(name: .expenseDataChanged, object: nil)
+            NotificationCenter.default.post(name: .splitRequestsChanged, object: nil)
+            
+            // Show success message
+            updateResults = "Successfully updated \(expensesToUpdate.count) expenses, \(splitRequestsToUpdate.count) split requests, and \(participantsToUpdate.count) participant records with new username: \(normalizedNewUsername)"
+            showingSuccessAlert = true
+            
+        } catch {
+            updateResults = "Error updating records with new username: \(error.localizedDescription)"
+            showingSuccessAlert = true
         }
     }
 }
