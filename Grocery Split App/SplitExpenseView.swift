@@ -1441,9 +1441,6 @@ struct ParticipantRow: View {
                                     RoundedRectangle(cornerRadius: 8)
                                         .stroke(Color(.systemGray3), lineWidth: 1)
                                 )
-                            Text("(remaining)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
                         }
                     } else {
                         HStack {
@@ -1511,9 +1508,6 @@ struct ParticipantRow: View {
                                         .stroke(Color(.systemGray3), lineWidth: 1)
                                 )
                             Text("%")
-                            Text("(remaining)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
                         }
                     } else {
                         TextField("", text: Binding(
@@ -1578,6 +1572,14 @@ struct ParticipantRow: View {
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
+                
+                // Add "(remaining)" text for the last participant to align with the status text
+                if isLastParticipant {
+                    Spacer()
+                    Text("(remaining)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         } else {
             HStack {
@@ -1587,6 +1589,14 @@ struct ParticipantRow: View {
                 Text("Total matches expense")
                     .font(.caption)
                     .foregroundColor(.green)
+                
+                // Add "(remaining)" text for the last participant to align with the status text
+                if isLastParticipant {
+                    Spacer()
+                    Text("(remaining)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         }
     }
@@ -1619,6 +1629,14 @@ struct ParticipantRow: View {
                 Text("100% allocated")
                     .font(.caption)
                     .foregroundColor(.green)
+            }
+            
+            // Add "(remaining)" text for the last participant to align with the status text
+            if isLastParticipant {
+                Spacer()
+                Text("(remaining)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
     }
